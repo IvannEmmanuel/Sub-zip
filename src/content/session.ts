@@ -5,7 +5,7 @@ import { buildOverlay, type Overlay } from './overlay';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
-import { findPlayerRoot } from './videoDetector';
+import { findBestVideo, findPlayerRoot } from './videoDetector';
 
 export interface LoadedFile {
   name: string;
@@ -33,31 +33,86 @@ export interface PipController {
   close(): void;
 }
 
+/** What it takes to hand a <video> back to the page exactly as it was. */
+interface Adopted {
+  video: HTMLVideoElement;
+  placeholder: Comment;
+  originalStyle: string | null;
+  originalControls: boolean;
+  playerRoot: Element;
+}
+
+/** A video must be at least this big and this much on screen to count as "the one being watched". */
+const MIN_W = 160;
+const MIN_H = 90;
+const MIN_VISIBLE = 0.4;
+
+function isWatchable(v: HTMLVideoElement): boolean {
+  if (!v.isConnected || v.paused || v.ended) return false;
+  const r = v.getBoundingClientRect();
+  if (r.width < MIN_W || r.height < MIN_H) return false;
+  const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0);
+  const h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+  return w > 0 && h > 0 && (w * h) / (r.width * r.height) >= MIN_VISIBLE;
+}
+
+/** Moves a video out of the page into the PiP window's layout, leaving a marker so it can be put back. */
+function adopt(video: HTMLVideoElement): Adopted {
+  const playerRoot = findPlayerRoot(video); // resolve BEFORE the video leaves its parent
+  const placeholder = document.createComment('sub-pip: video is in the Picture-in-Picture window');
+  video.before(placeholder);
+  const originalStyle = video.getAttribute('style');
+  video.removeAttribute('style'); // page inline sizing would fight the PiP layout
+  const originalControls = video.controls;
+  video.controls = false; // our own control bar replaces the native one
+  return { video, placeholder, originalStyle, originalControls, playerRoot };
+}
+
+/**
+ * Gives the video back to the page. If the page already threw its container away (reels/feeds recycle them),
+ * the video has nowhere to go: pause it so it does not keep playing audio from nowhere.
+ */
+function release(a: Adopted): void {
+  a.video.controls = a.originalControls;
+  if (a.originalStyle === null) a.video.removeAttribute('style');
+  else a.video.setAttribute('style', a.originalStyle);
+  if (a.placeholder.isConnected) a.placeholder.replaceWith(a.video);
+  else {
+    a.video.pause();
+    a.video.remove();
+  }
+}
+
 /** One open Picture-in-Picture window: owns the moved video, the overlay and the active subtitle source. */
 export class PipSession implements PipController {
   active: SourceId = 'off';
+  video: HTMLVideoElement;
 
   private settings: Settings;
+  private current: Adopted;
+  private overlay: Overlay;
   private detachSource: () => void = () => {};
   private closed = false;
-  private readonly watchTimer: number;
+  private readonly pollTimer: number;
+  private followTimer = 0;
 
   private constructor(
-    readonly video: HTMLVideoElement,
+    adopted: Adopted,
     private readonly win: Window,
-    private readonly overlay: Overlay,
-    private readonly placeholder: Comment,
-    private readonly originalStyle: string | null,
-    private readonly originalControls: boolean,
-    private readonly playerRoot: Element,
     private readonly deps: SessionDeps,
   ) {
+    this.current = adopted;
+    this.video = adopted.video;
     this.settings = deps.settings;
+    this.overlay = this.buildOverlayFor(adopted.video);
+
     win.addEventListener('pagehide', () => this.restore());
-    // If the page swaps the video out from under us (SPA navigation), close instead of leaving a dead window.
-    this.watchTimer = window.setInterval(() => {
-      if (!this.placeholder.isConnected) this.win.close();
-    }, 1000);
+
+    // Follow the viewer: when another video starts playing on screen (next reel, next item in a feed), switch to it.
+    document.addEventListener('playing', this.onAnyPlaying, true);
+    // Safety net for players that start without a 'playing' event we can see, and for a dropped container.
+    this.pollTimer = window.setInterval(() => this.poll(), 800);
+
     this.setSource('auto');
   }
 
@@ -73,23 +128,12 @@ export class PipSession implements PipController {
     });
 
     // Anything below can fail after the window exists — never leave it half built.
+    let adopted: Adopted | undefined;
     try {
-      const playerRoot = findPlayerRoot(video); // resolve BEFORE the video leaves its parent
-      const placeholder = document.createComment('sub-pip: video is in the Picture-in-Picture window');
-      video.before(placeholder);
-      const originalStyle = video.getAttribute('style');
-      video.removeAttribute('style'); // page inline sizing would fight the PiP layout
-      const originalControls = video.controls;
-      video.controls = false; // our own control bar replaces the native one
-
-      let session: PipSession | undefined;
-      const overlay = buildOverlay(win, video, deps.settings, {
-        update: (patch) => session?.updateSettings(patch),
-        close: () => win.close(),
-      });
-      session = new PipSession(video, win, overlay, placeholder, originalStyle, originalControls, playerRoot, deps);
-      return session;
+      adopted = adopt(video);
+      return new PipSession(adopted, win, deps);
     } catch (error) {
+      if (adopted) release(adopted);
       win.close();
       throw error;
     }
@@ -99,10 +143,59 @@ export class PipSession implements PipController {
     return !this.closed;
   }
 
+  private buildOverlayFor(video: HTMLVideoElement): Overlay {
+    return buildOverlay(this.win, video, this.settings, {
+      update: (patch) => this.updateSettings(patch),
+      close: () => this.win.close(),
+    });
+  }
+
+  // --- following ----------------------------------------------------------------------------
+  private readonly onAnyPlaying = (e: Event) => {
+    const target = e.target;
+    if (target instanceof HTMLVideoElement && target !== this.video) this.scheduleSwitch(target);
+  };
+
+  private scheduleSwitch(candidate: HTMLVideoElement): void {
+    window.clearTimeout(this.followTimer);
+    // Let the page finish scrolling / laying out before judging which video is on screen.
+    this.followTimer = window.setTimeout(() => {
+      if (!this.closed && candidate !== this.video && isWatchable(candidate)) this.switchTo(candidate);
+    }, 250);
+  }
+
+  private poll(): void {
+    if (this.closed) return;
+    const stranded = !this.current.placeholder.isConnected; // the page dropped the video's container
+    const stalled = this.video.paused || this.video.ended;
+    if (!stranded && !stalled) return;
+    const next = findBestVideo(); // searches the page, where our current video no longer lives
+    if (next && next !== this.video && isWatchable(next)) this.switchTo(next);
+  }
+
+  /** Swaps the video shown in the SAME window (no new user gesture needed). */
+  private switchTo(next: HTMLVideoElement): void {
+    if (this.closed || next === this.video) return;
+    const previousSource = this.active;
+
+    this.detachSource();
+    this.detachSource = () => {};
+    const left = this.current.video;
+    release(this.current); // hand the video back BEFORE the overlay is removed (removing a playing <video> pauses it)
+    left.pause(); // the viewer moved on: do not leave the previous video playing in the page behind the new one
+    this.overlay.destroy();
+
+    this.current = adopt(next);
+    this.video = next;
+    this.overlay = this.buildOverlayFor(next);
+    this.setSource(previousSource === 'file' ? 'file' : 'auto');
+    if (next.paused) void next.play().catch(() => {});
+  }
+
   available(): SourceId[] {
     const list: SourceId[] = [];
     if (getSubtitleTracks(this.video).length) list.push('tracks');
-    if (hasDomCaptions(this.playerRoot) || this.playerRoot.classList.contains('html5-video-player')) list.push('dom');
+    if (hasDomCaptions(this.current.playerRoot) || this.current.playerRoot.classList.contains('html5-video-player')) list.push('dom');
     if (this.deps.getFile()) list.push('file');
     list.push('off');
     return list;
@@ -131,7 +224,7 @@ export class PipSession implements PipController {
         this.detachSource = attachTextTrack(this.video, onText);
         break;
       case 'dom':
-        this.detachSource = attachDomCaptions(this.playerRoot, onText);
+        this.detachSource = attachDomCaptions(this.current.playerRoot, onText);
         break;
       case 'off':
         onText('');
@@ -159,15 +252,12 @@ export class PipSession implements PipController {
   private restore(): void {
     if (this.closed) return;
     this.closed = true;
-    window.clearInterval(this.watchTimer);
+    window.clearInterval(this.pollTimer);
+    window.clearTimeout(this.followTimer);
+    document.removeEventListener('playing', this.onAnyPlaying, true);
     this.detachSource();
+    release(this.current);
     this.overlay.destroy();
-
-    this.video.controls = this.originalControls;
-    if (this.originalStyle === null) this.video.removeAttribute('style');
-    else this.video.setAttribute('style', this.originalStyle);
-
-    if (this.placeholder.isConnected) this.placeholder.replaceWith(this.video);
     this.deps.onClosed();
   }
 }

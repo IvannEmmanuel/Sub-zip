@@ -346,6 +346,10 @@ export function buildOverlay(
       for (const e of progressEvents) video.removeEventListener(e, syncProgress);
       video.removeEventListener('click', togglePlay);
       doc.removeEventListener('keydown', onKey);
+      // Remove our DOM so a new overlay can be built in the same window (when PiP follows to the next video).
+      // The video must already have been handed back to the page by the caller; if not, it goes with the stage.
+      stage.remove();
+      style.remove();
     },
   };
 }
