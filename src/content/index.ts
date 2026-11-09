@@ -1,4 +1,4 @@
-import type { ActionResult, Message, SourceId, Status } from '../lib/messaging';
+import type { ActionResult, HistoryReply, Message, SourceId, Status } from '../lib/messaging';
 import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, type Settings } from '../lib/settings';
 import { initPageButton, showToast } from './pageButton';
 import { CanvasPipSession, isCanvasPipSupported } from './canvasPip';
@@ -27,10 +27,12 @@ function start(): void {
 
   void loadSettings().then((s) => {
     settings = s;
+    syncAutoPip();
   });
   onSettingsChanged((s) => {
     settings = s;
     session?.applySettings(s);
+    syncAutoPip();
   });
 
   function describeError(error: unknown): string {
@@ -90,7 +92,7 @@ function start(): void {
     }
   }
 
-  function handle(message: Message, video: HTMLVideoElement): Promise<Status | ActionResult> {
+  function handle(message: Message, video: HTMLVideoElement): Promise<Status | ActionResult | HistoryReply> {
     switch (message.type) {
       case 'toggle-pip':
         return togglePip(session?.video ?? video);
@@ -100,6 +102,11 @@ function start(): void {
       case 'load-cues':
         file = { name: message.name, cues: message.cues };
         if (session?.isOpen) session.setSource('file');
+        return Promise.resolve(status(video));
+      case 'history':
+        return Promise.resolve({ entries: session?.isOpen ? session.history() : [] });
+      case 'seek':
+        session?.seek(message.time);
         return Promise.resolve(status(video));
       case 'status':
       default:
@@ -118,6 +125,32 @@ function start(): void {
       return false; // never let a page quirk break the reply channel
     }
   });
+
+  /**
+   * Chrome's "automatic Picture-in-Picture": when the user leaves a tab that is playing media, Chrome calls this
+   * handler and allows the PiP window to open without a click. Needs the site's Automatic PiP permission in Chrome
+   * and a playing video. Only the top frame can open the Document PiP window.
+   */
+  function syncAutoPip(): void {
+    const ms = navigator.mediaSession;
+    if (!ms || !isTopFrame) return;
+    try {
+      ms.setActionHandler(
+        'enterpictureinpicture' as MediaSessionAction,
+        settings.autoPip && isDocumentPipSupported()
+          ? () => {
+              const video = findBestVideo();
+              if (session?.isOpen || !video || video.paused) return;
+              void togglePip(video);
+            }
+          : null,
+      );
+    } catch {
+      /* this Chrome has no automatic PiP action */
+    }
+  }
+  // Some sites reset their media session handlers when playback starts: set ours again.
+  document.addEventListener('playing', () => settings.autoPip && syncAutoPip(), true);
 
   initPageButton(
     () => settings.pageButton && isPipSupported() && !session?.isOpen && !opening,

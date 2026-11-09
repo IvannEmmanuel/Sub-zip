@@ -1,6 +1,8 @@
 import { applySubtitleVars } from '../lib/subtitleStyle';
-import type { Settings } from '../lib/settings';
+import type { HistoryEntry, Line } from '../lib/messaging';
+import type { Settings, TranslateMode } from '../lib/settings';
 import { iconSvg, type IconName } from './icons';
+import { defineWord } from './lookup';
 
 const CSS = /* css */ `
 :root { color-scheme: dark; }
@@ -23,6 +25,33 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .stage.pos-top .subs { top: var(--sub-offset); }
 .stage.pos-bottom.controls .subs { transform: translateY(calc(var(--bar-h) * -1)); }
 .stage.subs-off .subs { display: none; }
+.cue.tr { color: #FDE68A; }
+.w { pointer-events: auto; cursor: pointer; border-radius: .15em; }
+.w:hover { background: rgba(96,165,250,.5); }
+
+/* Word lookup card and history panel. */
+.dict { position: absolute; left: 50%; bottom: calc(var(--bar-h) + 10px); z-index: 5; width: min(92%, 420px);
+  max-height: 55%; overflow: auto; transform: translateX(-50%); padding: 10px 12px; border-radius: 10px;
+  background: rgba(17,24,39,.97); border: 1px solid #1f2937; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  color: #E5E7EB; font-size: 13px; line-height: 1.45; }
+.dict[hidden], .hist[hidden] { display: none; }
+.dict h3 { margin: 0; padding-right: 28px; font-size: 16px; color: #fff; }
+.dict .tr1 { margin: 2px 0 4px; color: #93C5FD; font-size: 14px; }
+.dict .pos { margin-top: 6px; color: #9CA3AF; font-style: italic; }
+.dict ul { margin: 2px 0 0; padding-left: 18px; }
+.dict .x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; }
+.dict .muted { color: #9CA3AF; }
+.hist { position: absolute; inset: 0 0 var(--bar-h) 0; z-index: 4; overflow: auto; padding: 10px;
+  background: rgba(3,7,18,.93); }
+.hist h3 { margin: 0 0 6px; padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: #9CA3AF; }
+.hist-row { display: flex; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: #E5E7EB; font: inherit; font-size: 13px; line-height: 1.4; text-align: left;
+  cursor: pointer; }
+.hist-row:hover, .hist-row:focus-visible { background: rgba(255,255,255,.1); outline: none; }
+.hist-row time { flex: none; color: #60A5FA; font-variant-numeric: tabular-nums; }
+.hist-row .tr { display: block; color: #FDE68A; }
+.hist .empty { padding: 8px; color: #9CA3AF; font-size: 13px; }
 .cue { max-width: 100%; padding: .05em .45em; border-radius: .3em; white-space: pre-wrap;
   overflow-wrap: anywhere; background: var(--sub-bg); color: var(--sub-color); text-shadow: var(--sub-shadow);
   -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -77,16 +106,29 @@ interface ButtonSpec {
 export interface OverlayHandlers {
   update(patch: Partial<Settings>): void;
   close(): void;
+  history(): HistoryEntry[];
+  seekTo(time: number): void;
 }
 
 export interface Overlay {
   stage: HTMLElement;
-  setText(text: string): void;
+  setLines(lines: Line[]): void;
   applySettings(settings: Settings): void;
   destroy(): void;
 }
 
 const IDLE_MS = 2500;
+const MODES: TranslateMode[] = ['off', 'dual', 'translated'];
+const MODE_LABEL: Record<TranslateMode, string> = { off: 'off', dual: 'original + translation', translated: 'translation only' };
+
+const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
+
+function fmtTime(t: number): string {
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = Math.floor(t % 60);
+  return (h ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + `:${String(s).padStart(2, '0')}`;
+}
 
 export function buildOverlay(
   win: Window,
@@ -109,6 +151,17 @@ export function buildOverlay(
   const subs = doc.createElement('div');
   subs.className = 'subs';
   subs.setAttribute('aria-hidden', 'true'); // the video's own audio/captions are the source of truth
+
+  const dict = doc.createElement('div');
+  dict.className = 'dict';
+  dict.hidden = true;
+  dict.setAttribute('role', 'dialog');
+  dict.setAttribute('aria-label', 'Word lookup');
+
+  const hist = doc.createElement('div');
+  hist.className = 'hist';
+  hist.hidden = true;
+  hist.setAttribute('aria-label', 'Subtitle history');
 
   const bar = doc.createElement('div');
   bar.className = 'bar';
@@ -190,6 +243,8 @@ export function buildOverlay(
   });
   addSpacer();
   addButton({ id: 'cc', label: 'Show or hide subtitles', icon: 'captions' }, toggleSubs).setAttribute('aria-pressed', 'true');
+  addButton({ id: 'translate', label: 'Translation', icon: 'languages', optional: true }, () => cycleTranslate()).setAttribute('aria-pressed', 'false');
+  addButton({ id: 'history', label: 'Subtitle history (H)', icon: 'history', optional: true }, () => toggleHistory());
   addSep();
   addButton({ id: 'smaller', label: 'Smaller subtitles', icon: 'smaller', optional: true }, () =>
     handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }),
@@ -213,7 +268,7 @@ export function buildOverlay(
   );
   addButton({ id: 'close', label: 'Close Picture-in-Picture', icon: 'close' }, handlers.close);
 
-  stage.append(subs, bar);
+  stage.append(subs, hist, dict, bar);
   stage.prepend(video);
   doc.body.append(stage);
 
@@ -295,6 +350,19 @@ export function buildOverlay(
         if (onButton && e.key === ' ') return; // native button activation handles it
         togglePlay();
         break;
+      case 'j': seek(-10); break;
+      case 'l': seek(10); break;
+      case 'h': toggleHistory(); break;
+      case 't': cycleTranslate(); break;
+      case '+':
+      case '=': handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }); break;
+      case '-':
+      case '_': handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }); break;
+      case 'Escape':
+        if (dict.hidden && hist.hidden) return;
+        closeDict();
+        hist.hidden = true;
+        break;
       case 'ArrowLeft': seek(e.shiftKey ? -10 : -5); break;
       case 'ArrowRight': seek(e.shiftKey ? 10 : 5); break;
       case 'ArrowUp': video.volume = Math.min(1, video.volume + 0.1); break;
@@ -313,6 +381,12 @@ export function buildOverlay(
     applySubtitleVars(stage, next);
     stage.classList.toggle('pos-bottom', next.position === 'bottom');
     stage.classList.toggle('pos-top', next.position === 'top');
+    const tr = buttons.get('translate');
+    if (tr) {
+      tr.setAttribute('aria-pressed', String(next.translateMode !== 'off'));
+      tr.title = `Translation: ${MODE_LABEL[next.translateMode]} (T)`;
+      tr.setAttribute('aria-label', tr.title);
+    }
   };
   applySettings(initial);
   syncPlayState();
@@ -320,26 +394,138 @@ export function buildOverlay(
   syncProgress();
   showControls();
 
-  const setText = (text: string) => {
+  // --- subtitles, word lookup, history -------------------------------------------------------
+  const fillWords = (el: HTMLElement, text: string) => {
+    // Every word becomes a click target for the dictionary. Intl.Segmenter also splits Japanese / Chinese.
+    const parts = segmenter
+      ? Array.from(segmenter.segment(text), (s) => ({ text: s.segment, word: Boolean(s.isWordLike) }))
+      : text.split(/(s+)/).map((t) => ({ text: t, word: /S/.test(t) }));
+    for (const part of parts) {
+      if (!part.word) {
+        el.append(doc.createTextNode(part.text));
+        continue;
+      }
+      const span = doc.createElement('span');
+      span.className = 'w';
+      span.textContent = part.text; // textContent — never inject page-provided caption text as HTML
+      el.append(span);
+    }
+  };
+
+  const setLines = (lines: Line[]) => {
     subs.replaceChildren(
-      ...text
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => {
-          const span = doc.createElement('span');
-          span.className = 'cue';
-          span.textContent = line; // textContent — never inject page-provided caption text as HTML
-          return span;
-        }),
+      ...lines.map((line) => {
+        const span = doc.createElement('span');
+        span.className = line.tr ? 'cue tr' : 'cue';
+        fillWords(span, line.text);
+        return span;
+      }),
     );
+  };
+
+  let pausedByDict = false;
+  let lookupToken = 0;
+  const closeDict = () => {
+    lookupToken++;
+    dict.hidden = true;
+    if (pausedByDict) {
+      pausedByDict = false;
+      void video.play().catch(() => {});
+    }
+  };
+  const textEl = (tag: string, cls: string, text: string) => {
+    const el = doc.createElement(tag);
+    if (cls) el.className = cls;
+    el.textContent = text;
+    return el;
+  };
+  const openDict = async (raw: string) => {
+    const word = raw.replace(/^[p{P}p{S}s]+|[p{P}p{S}s]+$/gu, '');
+    if (!word) return;
+    const token = ++lookupToken;
+    if (!video.paused) {
+      video.pause();
+      pausedByDict = true;
+    }
+    const close = doc.createElement('button');
+    close.type = 'button';
+    close.className = 'btn x';
+    close.setAttribute('aria-label', 'Close lookup');
+    close.innerHTML = iconSvg('close', 16);
+    close.addEventListener('click', closeDict);
+    dict.replaceChildren(close, textEl('h3', '', word), textEl('p', 'muted', 'Looking up…'));
+    dict.hidden = false;
+
+    const result = await defineWord(word, settings.translateTo);
+    if (token !== lookupToken) return; // closed, or another word was clicked meanwhile
+    const body: HTMLElement[] = [close, textEl('h3', '', word)];
+    if (!result) body.push(textEl('p', 'muted', 'Could not look this up. Check your connection.'));
+    else {
+      if (result.translation && result.translation.toLowerCase() !== word.toLowerCase())
+        body.push(textEl('p', 'tr1', result.translation));
+      for (const m of result.meanings) {
+        if (m.pos) body.push(textEl('div', 'pos', m.pos));
+        const ul = doc.createElement('ul');
+        for (const d of m.defs) ul.append(textEl('li', '', d));
+        body.push(ul);
+      }
+      if (body.length === 2) body.push(textEl('p', 'muted', 'No result for this word.'));
+    }
+    dict.replaceChildren(...body);
+  };
+  subs.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement | null)?.closest?.('.w');
+    if (target) void openDict(target.textContent ?? '');
+  });
+
+  let histSig = '';
+  const renderHistory = () => {
+    const entries = handlers.history();
+    const last = entries[entries.length - 1];
+    const sig = `${entries.length}|${last?.translated ?? ''}|${settings.translateMode}`;
+    if (sig === histSig) return;
+    histSig = sig;
+    const rows = entries
+      .slice()
+      .reverse()
+      .map((entry) => {
+        const b = doc.createElement('button');
+        b.type = 'button';
+        b.className = 'hist-row';
+        const text = doc.createElement('span');
+        text.append(doc.createTextNode(entry.text));
+        if (settings.translateMode !== 'off' && entry.translated) text.append(textEl('span', 'tr', entry.translated));
+        b.append(textEl('time', '', fmtTime(entry.time)), text);
+        b.addEventListener('click', () => handlers.seekTo(Math.max(0, entry.time - 0.5)));
+        return b;
+      });
+    hist.replaceChildren(
+      textEl('h3', '', 'Subtitle history — click a line to jump there'),
+      ...(rows.length ? rows : [textEl('div', 'empty', 'Nothing yet. Lines appear here as they are shown.')]),
+    );
+  };
+  let histTimer = 0;
+  const toggleHistory = () => {
+    hist.hidden = !hist.hidden;
+    win.clearInterval(histTimer);
+    if (hist.hidden) return;
+    closeDict();
+    histSig = '';
+    renderHistory();
+    histTimer = win.setInterval(renderHistory, 700);
+  };
+  const cycleTranslate = () => {
+    const next = MODES[(MODES.indexOf(settings.translateMode) + 1) % MODES.length] ?? 'off';
+    handlers.update({ translateMode: next });
   };
 
   return {
     stage,
-    setText,
+    setLines,
     applySettings,
     destroy() {
       win.clearTimeout(idleTimer);
+      win.clearInterval(histTimer);
       video.removeEventListener('play', syncPlayState);
       video.removeEventListener('pause', syncPlayState);
       video.removeEventListener('volumechange', syncMute);

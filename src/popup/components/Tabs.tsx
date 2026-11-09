@@ -30,7 +30,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: TabsProps<T>) 
   };
 
   return (
-    <div role="tablist" aria-label="Sub PiP sections" class="grid grid-cols-2 gap-1 rounded-xl bg-raised p-1" onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label="Sub PiP sections" class="grid gap-1 rounded-xl bg-raised p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }} onKeyDown={onKeyDown}>
       {tabs.map((t) => {
         const selected = t.id === value;
         return (
@@ -44,7 +44,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: TabsProps<T>) 
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(t.id)}
             class={[
-              'focus-ring flex min-h-[36px] cursor-pointer items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition-colors duration-150',
+              'focus-ring flex min-h-[36px] cursor-pointer items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors duration-150',
               selected ? 'bg-surface text-ink shadow-sm ring-1 ring-line' : 'text-mute hover:text-ink',
             ].join(' ')}
           >

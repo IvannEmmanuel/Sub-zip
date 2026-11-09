@@ -1,7 +1,8 @@
-import type { SourceId } from '../lib/messaging';
+import type { HistoryEntry, Line, SourceId } from '../lib/messaging';
 import type { Settings } from '../lib/settings';
 import { subtitleVars } from '../lib/subtitleStyle';
 import type { PipController, SessionDeps } from './session';
+import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
@@ -29,7 +30,8 @@ export class CanvasPipSession implements PipController {
   private readonly playerRoot: Element;
   private detachSource: () => void = () => {};
   private timer = 0;
-  private text = '';
+  private lines: Line[] = [];
+  private readonly pipeline: SubtitlePipeline;
   private closed = false;
   private auto = true;
   private retryTimer = 0;
@@ -39,6 +41,10 @@ export class CanvasPipSession implements PipController {
     private readonly deps: SessionDeps,
   ) {
     this.settings = deps.settings;
+    this.pipeline = new SubtitlePipeline(video, deps.settings, (lines) => {
+      this.lines = lines;
+      this.draw();
+    });
     this.playerRoot = findPlayerRoot(video);
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas is not available on this page.');
@@ -188,7 +194,7 @@ export class CanvasPipSession implements PipController {
       /* video not ready yet */
     }
     this.drawOverlayCanvases(dx, dy, dw, dh);
-    this.drawSubtitles(this.text);
+    this.drawSubtitles(this.lines);
   }
 
   /** Some players (JASSUB/ASS, custom renderers) draw captions on their own canvas over the video: copy those too. */
@@ -232,8 +238,8 @@ export class CanvasPipSession implements PipController {
     return out;
   }
 
-  private drawSubtitles(text: string): void {
-    if (!text) return;
+  private drawSubtitles(source: Line[]): void {
+    if (!source.length) return;
     const { ctx, canvas, settings: s } = this;
     const W = canvas.width;
     const H = canvas.height;
@@ -244,7 +250,7 @@ export class CanvasPipSession implements PipController {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
 
-    const lines = text.split('\n').flatMap((l) => this.wrap(l, W * 0.9));
+    const lines = source.flatMap((l) => this.wrap(l.text, W * 0.9).map((text) => ({ text, tr: l.tr })));
     const lineH = fontPx * 1.32;
     const blockH = lines.length * lineH;
     const edge = (H * s.offset) / 100;
@@ -252,7 +258,7 @@ export class CanvasPipSession implements PipController {
 
     lines.forEach((line, i) => {
       const cy = top + lineH * i + lineH / 2;
-      const w = ctx.measureText(line).width;
+      const w = ctx.measureText(line.text).width;
       if (s.bgOpacity > 0) {
         ctx.fillStyle = `rgba(0,0,0,${s.bgOpacity})`;
         const pad = fontPx * 0.4;
@@ -263,10 +269,10 @@ export class CanvasPipSession implements PipController {
       if (s.outline) {
         ctx.strokeStyle = '#000';
         ctx.lineWidth = fontPx * 0.14;
-        ctx.strokeText(line, W / 2, cy);
+        ctx.strokeText(line.text, W / 2, cy);
       }
-      ctx.fillStyle = s.textColor;
-      ctx.fillText(line, W / 2, cy);
+      ctx.fillStyle = line.tr ? '#FDE68A' : s.textColor;
+      ctx.fillText(line.text, W / 2, cy);
     });
   }
 
@@ -299,10 +305,7 @@ export class CanvasPipSession implements PipController {
           ? choice
           : 'off';
 
-    const onText = (text: string) => {
-      this.text = text;
-      this.draw();
-    };
+    const onText = (text: string) => this.pipeline.push(text);
     switch (id) {
       case 'file': {
         const file = this.deps.getFile();
@@ -322,8 +325,17 @@ export class CanvasPipSession implements PipController {
     this.active = id;
   }
 
+  history(): HistoryEntry[] {
+    return this.pipeline.history();
+  }
+
+  seek(time: number): void {
+    this.video.currentTime = time;
+  }
+
   applySettings(settings: Settings): void {
     this.settings = settings;
+    this.pipeline.applySettings(settings);
     this.draw();
   }
 

@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { FileText, Play, PictureInPicture2, SlidersHorizontal, X } from 'lucide-preact';
+import { FileText, Languages, Play, PictureInPicture2, SlidersHorizontal, X } from 'lucide-preact';
 import { sortCues } from '../lib/cues';
-import { ensureContentScript, sendToTab, type ActionResult, type SourceId, type Status } from '../lib/messaging';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../lib/settings';
+import {
+  ensureContentScript,
+  sendToTab,
+  type ActionResult,
+  type HistoryEntry,
+  type HistoryReply,
+  type SourceId,
+  type Status,
+} from '../lib/messaging';
+import { DEFAULT_SETTINGS, LANGUAGES, loadSettings, saveSettings, type Settings } from '../lib/settings';
 import { parseSubtitles } from '../lib/srt';
 import { Preview } from './components/Preview';
 import { Segmented } from './components/Segmented';
@@ -11,7 +19,7 @@ import { Swatches } from './components/Swatches';
 import { Switch } from './components/Switch';
 import { Tabs } from './components/Tabs';
 
-type TabId = 'player' | 'style';
+type TabId = 'player' | 'style' | 'tools';
 
 const SOURCE_LABELS: Record<SourceId, string> = {
   tracks: 'Tracks',
@@ -49,6 +57,28 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const pipOpenNow = status?.pipOpen ?? false;
+
+  // While the Tools tab is open and PiP is on, keep the subtitle history fresh.
+  useEffect(() => {
+    if (tab !== 'tools' || tabId === null || !pipOpenNow) return;
+    let alive = true;
+    const pull = async () => {
+      const reply = await sendToTab<HistoryReply>(tabId, { type: 'history' });
+      if (alive && reply) setHistory(reply.entries);
+    };
+    void pull();
+    const timer = setInterval(() => void pull(), 1000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [tab, tabId, pipOpenNow]);
+
+  const jumpTo = (time: number) => {
+    if (tabId !== null) void sendToTab<Status>(tabId, { type: 'seek', time: Math.max(0, time - 0.5) });
+  };
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -143,6 +173,7 @@ export function App() {
         tabs={[
           { id: 'player', label: 'Player', icon: <Play size={14} /> },
           { id: 'style', label: 'Style', icon: <SlidersHorizontal size={14} /> },
+          { id: 'tools', label: 'Tools', icon: <Languages size={14} /> },
         ]}
       />
 
@@ -197,6 +228,86 @@ export function App() {
                 <FileText size={16} aria-hidden="true" />
                 <span class="min-w-0 truncate">{status?.fileName ?? 'Load .srt / .vtt file'}</span>
               </button>
+            </section>
+          </div>
+        ) : tab === 'tools' ? (
+          <div class="flex flex-col gap-4">
+            <section aria-label="Translation" class="flex flex-col gap-2">
+              <h2 class="section-label">Translation</h2>
+              <Segmented<Settings['translateMode']>
+                label="Translation mode"
+                value={settings.translateMode}
+                onChange={(translateMode) => updateSettings({ translateMode })}
+                options={[
+                  { value: 'off', label: 'Off' },
+                  { value: 'dual', label: 'Dual' },
+                  { value: 'translated', label: 'Translated' },
+                ]}
+              />
+              <label class="grid min-h-[40px] grid-cols-[84px_1fr] items-center gap-3">
+                <span class="text-[13px] text-ink">Language</span>
+                <select
+                  class="focus-ring min-h-[34px] rounded-lg border border-line bg-raised px-2 text-[13px] text-ink"
+                  value={settings.translateTo}
+                  onChange={(e) => updateSettings({ translateTo: (e.currentTarget as HTMLSelectElement).value })}
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p class="text-[11px] leading-relaxed text-mute">
+                Dual shows the original and the translation together. Translation sends each subtitle line, and any word you click
+                in the PiP window, to Google Translate (and dictionaryapi.dev for English words). Nothing is sent while it is Off
+                and you don’t click a word.
+              </p>
+            </section>
+
+            <section aria-label="Automatic Picture-in-Picture" class="border-t border-line pt-2">
+              <Switch
+                label="Open PiP when I leave the tab"
+                hint="Needs Chrome’s “Automatic picture-in-picture” allowed for the site"
+                checked={settings.autoPip}
+                onChange={(autoPip) => updateSettings({ autoPip })}
+              />
+            </section>
+
+            <section aria-label="Subtitle history" class="flex flex-col gap-2 border-t border-line pt-3">
+              <h2 class="section-label">History</h2>
+              {!pipOpenNow ? (
+                <p class="text-xs text-mute">Open Picture-in-Picture to collect the lines as they are shown.</p>
+              ) : history.length === 0 ? (
+                <p class="text-xs text-mute">No lines yet.</p>
+              ) : (
+                <ul class="flex flex-col gap-0.5">
+                  {history
+                    .slice()
+                    .reverse()
+                    .slice(0, 30)
+                    .map((h, i) => (
+                      <li key={`${h.time}-${i}`}>
+                        <button
+                          type="button"
+                          class="focus-ring flex w-full cursor-pointer gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-line"
+                          onClick={() => jumpTo(h.time)}
+                          title="Jump to this line"
+                        >
+                          <time class="shrink-0 tabular-nums text-primary-soft">
+                            {Math.floor(h.time / 60)}:{String(Math.floor(h.time % 60)).padStart(2, '0')}
+                          </time>
+                          <span class="min-w-0">
+                            <span class="block text-ink">{h.text}</span>
+                            {settings.translateMode !== 'off' && h.translated && (
+                              <span class="block text-yellow-200">{h.translated}</span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
             </section>
           </div>
         ) : (

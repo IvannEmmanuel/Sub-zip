@@ -6,7 +6,45 @@ export type Message =
   | { type: 'status' }
   | { type: 'toggle-pip' }
   | { type: 'set-source'; source: SourceId | 'auto' }
-  | { type: 'load-cues'; name: string; cues: Cue[] };
+  | { type: 'load-cues'; name: string; cues: Cue[] }
+  | { type: 'history' }
+  | { type: 'seek'; time: number };
+
+/** One subtitle line as shown: `tr` marks a translated line (shown in a different color in dual mode). */
+export interface Line {
+  text: string;
+  tr: boolean;
+}
+
+export interface HistoryEntry {
+  /** Video time (seconds) when the line appeared. */
+  time: number;
+  text: string;
+  translated: string;
+}
+
+export interface HistoryReply {
+  entries: HistoryEntry[];
+}
+
+/** Requests the content script sends to the background worker (it can reach the translate / dictionary sites). */
+export type BackgroundRequest =
+  | { type: 'translate'; text: string; to: string }
+  | { type: 'define'; word: string; to: string };
+
+export interface BackgroundReply<T = unknown> {
+  ok: boolean;
+  data?: T;
+}
+
+export interface DefineResult {
+  word: string;
+  /** The word translated into the chosen language. */
+  translation: string;
+  /** Detected language of the word. */
+  from: string;
+  meanings: { pos: string; defs: string[] }[];
+}
 
 export interface Status {
   hasVideo: boolean;

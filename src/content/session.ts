@@ -1,7 +1,8 @@
 import type { Cue } from '../lib/cues';
-import type { SourceId } from '../lib/messaging';
+import type { HistoryEntry, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
+import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
@@ -28,6 +29,8 @@ export interface PipController {
   readonly isOpen: boolean;
   readonly active: SourceId;
   available(): SourceId[];
+  history(): HistoryEntry[];
+  seek(time: number): void;
   setSource(choice: SourceId | 'auto'): void;
   applySettings(settings: Settings): void;
   close(): void;
@@ -90,7 +93,8 @@ export class PipSession implements PipController {
 
   private settings: Settings;
   private current: Adopted;
-  private overlay: Overlay;
+  private overlay!: Overlay;
+  private readonly pipeline: SubtitlePipeline;
   private detachSource: () => void = () => {};
   private closed = false;
   private readonly pollTimer: number;
@@ -105,6 +109,7 @@ export class PipSession implements PipController {
     this.current = adopted;
     this.video = adopted.video;
     this.settings = deps.settings;
+    this.pipeline = new SubtitlePipeline(adopted.video, deps.settings, (lines) => this.overlay.setLines(lines));
     this.overlay = this.buildOverlayFor(adopted.video);
 
     win.addEventListener('pagehide', () => this.restore());
@@ -148,6 +153,8 @@ export class PipSession implements PipController {
     return buildOverlay(this.win, video, this.settings, {
       update: (patch) => this.updateSettings(patch),
       close: () => this.win.close(),
+      history: () => this.pipeline.history(),
+      seekTo: (time) => this.seek(time),
     });
   }
 
@@ -190,6 +197,7 @@ export class PipSession implements PipController {
 
     this.current = adopt(next);
     this.video = next;
+    this.pipeline.setVideo(next);
     this.overlay = this.buildOverlayFor(next);
     this.setSource(previousSource === 'file' ? 'file' : 'auto');
     if (next.paused) void next.play().catch(() => {});
@@ -217,7 +225,7 @@ export class PipSession implements PipController {
           ? choice
           : 'off';
 
-    const onText = (text: string) => this.overlay.setText(text);
+    const onText = (text: string) => this.pipeline.push(text);
     switch (id) {
       case 'file': {
         const file = this.deps.getFile();
@@ -237,9 +245,18 @@ export class PipSession implements PipController {
     this.active = id;
   }
 
+  history(): HistoryEntry[] {
+    return this.pipeline.history();
+  }
+
+  seek(time: number): void {
+    this.video.currentTime = time;
+  }
+
   /** Applies settings changed elsewhere (popup/options) without writing them back. */
   applySettings(settings: Settings): void {
     this.settings = settings;
+    this.pipeline.applySettings(settings);
     this.overlay.applySettings(settings);
   }
 
