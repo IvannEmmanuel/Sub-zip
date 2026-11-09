@@ -104,7 +104,43 @@ async function define(word: string, to: string): Promise<DefineResult> {
   return remember(key, result);
 }
 
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse: (r: BackgroundReply) => void) => {
+/**
+ * Runs INSIDE the page (main world), because Chrome ties automatic Picture-in-Picture to the page's own media session.
+ * It must be self-contained: the function is serialized into the tab. When Chrome decides to enter PiP (user left the
+ * tab while a video plays) it fires "sub-pip-auto-enter", which the extension's content script answers.
+ */
+function installAutoPip(enabled: boolean): void {
+  const w = window as typeof window & { __subPipAuto?: boolean };
+  const report = (state: string) => window.dispatchEvent(new CustomEvent('sub-pip-auto-ready', { detail: state }));
+  const apply = () => {
+    try {
+      navigator.mediaSession.setActionHandler(
+        'enterpictureinpicture' as MediaSessionAction,
+        w.__subPipAuto ? () => window.dispatchEvent(new CustomEvent('sub-pip-auto-enter')) : null,
+      );
+      report(w.__subPipAuto ? 'on' : 'off');
+    } catch {
+      report('unsupported'); // Chrome older than 134 has no such action
+    }
+  };
+  const first = w.__subPipAuto === undefined;
+  w.__subPipAuto = enabled;
+  // Many players re-register their own media session handlers when playback starts: put ours back.
+  if (first) document.addEventListener('playing', () => w.__subPipAuto && apply(), true);
+  apply();
+}
+
+chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse: (r: BackgroundReply) => void) => {
+  if (message?.type === 'auto-pip') {
+    if (sender.tab?.id === undefined || sender.frameId !== 0) return false; // only the top frame can open Document PiP
+    chrome.scripting
+      .executeScript({ target: { tabId: sender.tab.id, frameIds: [0] }, world: 'MAIN', func: installAutoPip, args: [message.enabled] })
+      .then(
+        () => sendResponse({ ok: true }),
+        () => sendResponse({ ok: false }),
+      );
+    return true;
+  }
   if (message?.type === 'translate') {
     translate(message.text, message.to).then(
       (data) => sendResponse({ ok: true, data }),

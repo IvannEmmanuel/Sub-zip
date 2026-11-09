@@ -60,6 +60,7 @@ function start(): void {
       available,
       active: session?.isOpen ? session.active : 'off',
       fileName: file?.name ?? null,
+      auto: { state: autoState, last: autoLast },
     };
   }
 
@@ -127,30 +128,35 @@ function start(): void {
   });
 
   /**
-   * Chrome's "automatic Picture-in-Picture": when the user leaves a tab that is playing media, Chrome calls this
-   * handler and allows the PiP window to open without a click. Needs the site's Automatic PiP permission in Chrome
-   * and a playing video. Only the top frame can open the Document PiP window.
+   * Chrome's "automatic Picture-in-Picture": when the user leaves a tab whose video is playing with sound, Chrome calls
+   * the page's "enterpictureinpicture" media session handler and lets it open a PiP window without a click.
+   * The handler is registered in the page's own world by the background worker; it signals us with DOM events.
+   * Chrome only does this on 134+, for a video in the top frame, once the site has enough media engagement and the
+   * user has allowed "Automatic picture-in-picture" for it.
    */
+  let autoState: Status['auto']['state'] = 'off';
+  let autoLast: string | null = null;
+  window.addEventListener('sub-pip-auto-ready', (e) => {
+    autoState = (e as CustomEvent<string>).detail as Status['auto']['state'];
+  });
+  window.addEventListener('sub-pip-auto-enter', () => {
+    const video = session?.video ?? findBestVideo();
+    if (session?.isOpen) autoLast = 'Already open';
+    else if (!video) autoLast = 'Chrome asked for PiP but no video was found';
+    else
+      void togglePip(video).then((r) => {
+        autoLast = r.ok ? 'Opened automatically' : `Chrome asked for PiP but it failed: ${r.error ?? 'unknown error'}`;
+      });
+  });
   function syncAutoPip(): void {
-    const ms = navigator.mediaSession;
-    if (!ms || !isTopFrame) return;
+    if (!isTopFrame) return;
+    const enabled = settings.autoPip && isDocumentPipSupported();
     try {
-      ms.setActionHandler(
-        'enterpictureinpicture' as MediaSessionAction,
-        settings.autoPip && isDocumentPipSupported()
-          ? () => {
-              const video = findBestVideo();
-              if (session?.isOpen || !video || video.paused) return;
-              void togglePip(video);
-            }
-          : null,
-      );
+      void chrome.runtime.sendMessage({ type: 'auto-pip', enabled }).catch(() => {});
     } catch {
-      /* this Chrome has no automatic PiP action */
+      /* extension was reloaded: this copy of the script is dead */
     }
   }
-  // Some sites reset their media session handlers when playback starts: set ours again.
-  document.addEventListener('playing', () => settings.autoPip && syncAutoPip(), true);
 
   initPageButton(
     () => settings.pageButton && isPipSupported() && !session?.isOpen && !opening,

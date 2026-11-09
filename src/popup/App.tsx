@@ -36,6 +36,16 @@ const COLORS = [
   { value: '#F9A8D4', name: 'Pink' },
 ];
 
+const chromeMajor = Number(/Chrom(?:e|ium)\/(\d+)/.exec(navigator.userAgent)?.[1] ?? 0);
+
+function autoStatus(status: Status | null | undefined, major: number): string {
+  if (major && major < 134) return `Your Chrome is version ${major}. Automatic PiP needs Chrome 134 or newer.`;
+  if (!status) return 'Open this on a page with a video to check.';
+  if (status.auto.state === 'unsupported') return 'This Chrome does not support automatic Picture-in-Picture.';
+  if (status.auto.state === 'on') return 'Ready: Chrome will open PiP when you leave this tab while the video plays.';
+  return 'Not active on this page yet. Refresh the page after turning this on.';
+}
+
 type Phase = 'loading' | 'unsupported' | 'no-video' | 'ready' | 'open';
 
 const PHASE_COPY: Record<Phase, { title: string; body: string }> = {
@@ -272,6 +282,17 @@ export function App() {
                 checked={settings.autoPip}
                 onChange={(autoPip) => updateSettings({ autoPip })}
               />
+              {settings.autoPip && (
+                <div class="mt-1 rounded-lg border border-line bg-raised p-2.5 text-[11px] leading-relaxed text-mute">
+                  <p class="text-ink">{autoStatus(status, chromeMajor)}</p>
+                  {status?.auto.last && <p class="mt-1">Last time: {status.auto.last}</p>}
+                  <p class="mt-1">
+                    Chrome only does this when the video is in the page itself (not an embedded player), is playing with sound,
+                    and Chrome has asked and you chose “Allow” for the site. After turning this on, refresh the page, play the
+                    video, then switch tabs.
+                  </p>
+                </div>
+              )}
             </section>
 
             <section aria-label="Subtitle history" class="flex flex-col gap-2 border-t border-line pt-3">

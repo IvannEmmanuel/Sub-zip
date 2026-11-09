@@ -30,7 +30,8 @@ export interface HistoryReply {
 /** Requests the content script sends to the background worker (it can reach the translate / dictionary sites). */
 export type BackgroundRequest =
   | { type: 'translate'; text: string; to: string }
-  | { type: 'define'; word: string; to: string };
+  | { type: 'define'; word: string; to: string }
+  | { type: 'auto-pip'; enabled: boolean };
 
 export interface BackgroundReply<T = unknown> {
   ok: boolean;
@@ -54,6 +55,8 @@ export interface Status {
   available: SourceId[];
   active: SourceId;
   fileName: string | null;
+  /** Automatic Picture-in-Picture: is Chrome's handler registered, and what happened the last time Chrome used it. */
+  auto: { state: 'off' | 'on' | 'unsupported'; last: string | null };
 }
 
 export interface ActionResult {
