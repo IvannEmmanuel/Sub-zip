@@ -95,6 +95,7 @@ export class PipSession implements PipController {
   private closed = false;
   private readonly pollTimer: number;
   private followTimer = 0;
+  private auto = true;
 
   private constructor(
     adopted: Adopted,
@@ -166,6 +167,8 @@ export class PipSession implements PipController {
 
   private poll(): void {
     if (this.closed) return;
+    // Tracks / caption layers often appear after playback starts: keep looking while nothing is attached.
+    if (this.auto && this.active === 'off' && this.available().length > 1) this.setSource('auto');
     const stranded = !this.current.placeholder.isConnected; // the page dropped the video's container
     const stalled = this.video.paused || this.video.ended;
     if (!stranded && !stalled) return;
@@ -202,6 +205,7 @@ export class PipSession implements PipController {
   }
 
   setSource(choice: SourceId | 'auto'): void {
+    this.auto = choice === 'auto';
     this.detachSource();
     this.detachSource = () => {};
 

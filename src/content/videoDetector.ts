@@ -53,13 +53,33 @@ export function findBestVideo(root: ParentNode = document): HTMLVideoElement | n
   );
 }
 
+/**
+ * Grows `el` to the outermost ancestor that is still about the size of the video: custom players put their
+ * caption layer next to the <video>, not inside whatever element happened to match a class name.
+ */
+function widen(el: Element, video: HTMLVideoElement): Element {
+  const v = video.getBoundingClientRect();
+  if (!v.width || !v.height) return el;
+  let best = el;
+  for (
+    let p = el.parentElement, i = 0;
+    p && p !== document.body && p !== document.documentElement && i < 6;
+    p = p.parentElement, i++
+  ) {
+    const r = p.getBoundingClientRect();
+    if (r.width > v.width * 1.25 || r.height > v.height * 1.25) break;
+    best = p;
+  }
+  return best;
+}
+
 /** Nearest known player wrapper — used to scope caption observers. Call BEFORE moving the video. */
 export function findPlayerRoot(video: HTMLVideoElement): Element {
-  return (
+  const root =
     video.closest(
       '.html5-video-player, .video-js, .plyr, .jwplayer, .jw-wrapper, .shaka-video-container, .vjs-tech, [class*="player" i]',
     ) ??
     video.parentElement ??
-    document.body
-  );
+    document.body;
+  return root === document.body ? root : widen(root, video);
 }

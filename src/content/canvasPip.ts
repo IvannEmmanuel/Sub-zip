@@ -31,6 +31,8 @@ export class CanvasPipSession implements PipController {
   private timer = 0;
   private text = '';
   private closed = false;
+  private auto = true;
+  private retryTimer = 0;
 
   private constructor(
     readonly video: HTMLVideoElement,
@@ -279,6 +281,13 @@ export class CanvasPipSession implements PipController {
   }
 
   setSource(choice: SourceId | 'auto'): void {
+    this.auto = choice === 'auto';
+    if (!this.retryTimer) {
+      // Tracks / caption layers often appear after playback starts: keep looking while nothing is attached.
+      this.retryTimer = window.setInterval(() => {
+        if (this.auto && this.active === 'off' && this.available().length > 1) this.setSource('auto');
+      }, 800);
+    }
     this.detachSource();
     this.detachSource = () => {};
 
@@ -328,6 +337,7 @@ export class CanvasPipSession implements PipController {
     if (this.closed) return;
     this.closed = true;
     window.clearInterval(this.timer);
+    window.clearInterval(this.retryTimer);
     this.timer = 0;
     this.detachSource();
     this.video.removeEventListener('seeked', this.redraw);
