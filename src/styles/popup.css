@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply m-0 bg-surface text-ink font-sans antialiased;
+    color-scheme: dark;
+  }
+  body {
+    width: 340px;
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-soft;
+  }
+  .btn {
+    @apply focus-ring inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-hover;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-surface text-ink hover:bg-line;
+  }
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wider text-mute;
+  }
+
+  /* Thin dark scrollbar for the panel (only appears if content ever exceeds the fixed popup height). */
+  .scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #1f2937 transparent;
+  }
+  .scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scroll::-webkit-scrollbar-thumb {
+    background: #1f2937;
+    border-radius: 3px;
+  }
+
+  /* Range input: filled track driven by --fill, round white thumb with a blue ring. */
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    --fill: 0%;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #60a5fa var(--fill), #1f2937 var(--fill));
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 2px #2563eb;
+    transition: box-shadow 150ms ease;
+  }
+  .range:hover::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

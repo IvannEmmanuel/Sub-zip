@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sub PiP demo</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background: #0b0f17; color: #e5e7eb; margin: 0; padding: 32px; }
+      video { width: 640px; max-width: 100%; border-radius: 12px; background: #000; display: block; }
+      p { max-width: 640px; color: #9ca3af; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <h1>Sub PiP demo</h1>
+    <p>
+      Synthetic video with a native <code>&lt;track&gt;</code>. Press play, hover the video and click
+      <b>PiP + subs</b>. Subtitles should appear in the PiP window and stay in sync after seeking.
+    </p>
+    <video id="v" controls muted loop playsinline></video>
+    <script>
+      // Canvas animation -> MediaStream-less video: record 20s to a Blob so the video is seekable.
+      const canvas = Object.assign(document.createElement('canvas'), { width: 640, height: 360 });
+      const ctx = canvas.getContext('2d');
+      const video = document.getElementById('v');
+      const stream = canvas.captureStream(30);
+      const rec = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      const chunks = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      rec.onstop = () => {
+        video.src = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+        const vtt = 'WEBVTT\n\n' + Array.from({ length: 10 }, (_, i) => {
+          const s = (n) => `00:00:${String(n).padStart(2, '0')}.000`;
+          return `${s(i * 2)} --> ${s(i * 2 + 2)}\nSubtitle number ${i + 1}\nsecond line ${i + 1}`;
+        }).join('\n\n');
+        const track = document.createElement('track');
+        Object.assign(track, { kind: 'subtitles', label: 'English', srclang: 'en', default: true });
+        track.src = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+        video.append(track);
+      };
+      const t0 = performance.now();
+      rec.start();
+      (function draw() {
+        const t = (performance.now() - t0) / 1000;
+        ctx.fillStyle = `hsl(${(t * 30) % 360} 60% 25%)`;
+        ctx.fillRect(0, 0, 640, 360);
+        ctx.fillStyle = '#fff';
+        ctx.font = '48px system-ui';
+        ctx.fillText(t.toFixed(1) + 's', 24, 64);
+        if (t < 20) requestAnimationFrame(draw); else rec.stop();
+      })();
+    </script>
+  </body>
+</html>

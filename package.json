@@ -1,0 +1,29 @@
+{
+  "name": "sub-picture-in-picture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "zip": "npm run build && tar -a -cf sub-pip.zip -C dist ."
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "lucide-preact": "^1.70.0",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/chrome": "^0.3.7",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  }
+}
