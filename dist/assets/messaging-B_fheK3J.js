@@ -1,0 +1,1 @@
+async function n(e){const t=chrome.runtime.getManifest().content_scripts?.[0]?.js;if(t?.length)try{await chrome.scripting.executeScript({target:{tabId:e,allFrames:!0},files:t})}catch{}}async function r(e,t){try{return await chrome.tabs.sendMessage(e,t)??null}catch{return null}}export{n as e,r as s};
