@@ -69,6 +69,11 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const pipOpenNow = status?.pipOpen ?? false;
+  const [isBrave, setIsBrave] = useState(false);
+  useEffect(() => {
+    const brave = (navigator as Navigator & { brave?: { isBrave(): Promise<boolean> } }).brave;
+    void brave?.isBrave().then(setIsBrave, () => {});
+  }, []);
 
   // While the Tools tab is open and PiP is on, keep the subtitle history fresh.
   useEffect(() => {
@@ -284,9 +289,13 @@ export function App() {
               />
               {settings.autoPip && (
                 <div class="mt-1 rounded-lg border border-line bg-raised p-2.5 text-[11px] leading-relaxed text-mute">
-                  <p class="text-ink">{autoStatus(status, chromeMajor)}</p>
-                  {status?.auto.last && <p class="mt-1">Last time: {status.auto.last}</p>}
-                  <p class="mt-1">
+                  <p class="text-ink">
+                    {isBrave
+                      ? 'Brave does not support automatic Picture-in-Picture yet, so this has no effect here. Press Alt + P (or click the PiP + subs button) before you switch tabs.'
+                      : autoStatus(status, chromeMajor)}
+                  </p>
+                  {!isBrave && status?.auto.last && <p class="mt-1">Last time: {status.auto.last}</p>}
+                  <p class="mt-1" hidden={isBrave}>
                     Chrome only does this when the video is in the page itself (not an embedded player), is playing with sound,
                     and Chrome has asked and you chose “Allow” for the site. After turning this on, refresh the page, play the
                     video, then switch tabs.
