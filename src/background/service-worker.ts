@@ -141,6 +141,20 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
       );
     return true;
   }
+  if (message?.type === 'fetch-subs') {
+    // Only for pages we run in, and only for a subtitle file the page itself already requested (see siteCues.ts).
+    if (sender.tab?.id === undefined || !/^https?:\/\/.+\.(?:vtt|srt|ass|ssa)(?:[?#]|$)/i.test(message.url)) {
+      sendResponse({ ok: false });
+      return false;
+    }
+    fetch(message.url, { credentials: 'include' })
+      .then(async (res) => {
+        const text = res.ok ? await res.text() : '';
+        sendResponse(text && text.length < 3_000_000 ? { ok: true, data: text } : { ok: false });
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (message?.type === 'translate') {
     translate(message.text, message.to).then(
       (data) => sendResponse({ ok: true, data }),

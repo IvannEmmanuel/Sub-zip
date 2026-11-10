@@ -30,9 +30,13 @@ export function attachFileCues(
   const events = ['timeupdate', 'seeked', 'seeking', 'ratechange'] as const;
   for (const e of events) video.addEventListener(e, emit);
   loop();
+  // rAF stops while the page is hidden (you are on another tab) and media events only come ~4 times a second, which
+  // made captions late by up to 0.3 s. A short timer keeps them exact; the video clock is read directly.
+  const timer = window.setInterval(emit, 40);
 
   return () => {
     stopped = true;
+    window.clearInterval(timer);
     win.cancelAnimationFrame(raf);
     for (const e of events) video.removeEventListener(e, emit);
     onText('');

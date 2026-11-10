@@ -38,14 +38,21 @@ export function attachTextTrack(video: HTMLVideoElement, onText: (text: string) 
   const previousMode = track.mode;
   track.mode = 'hidden';
 
-  const emit = () => {
-    onText(Array.from(track.activeCues ?? []).map(cueText).filter(Boolean).join('\n'));
+  let last = '\u0000'; // never equals a real caption, so the first check always reports
+  const check = () => {
+    const text = Array.from(track.activeCues ?? []).map(cueText).filter(Boolean).join('\n');
+    if (text === last) return;
+    last = text;
+    onText(text);
   };
-  track.addEventListener('cuechange', emit);
-  emit();
+  // 'cuechange' is tied to the ~4/s media clock, so captions came up to 0.3 s late, worst while the tab was hidden.
+  const timer = window.setInterval(check, 40);
+  track.addEventListener('cuechange', check);
+  check();
 
   return () => {
-    track.removeEventListener('cuechange', emit);
+    window.clearInterval(timer);
+    track.removeEventListener('cuechange', check);
     track.mode = previousMode;
     onText('');
   };

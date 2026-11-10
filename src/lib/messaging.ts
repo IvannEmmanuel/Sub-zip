@@ -31,7 +31,8 @@ export interface HistoryReply {
 export type BackgroundRequest =
   | { type: 'translate'; text: string; to: string }
   | { type: 'define'; word: string; to: string }
-  | { type: 'auto-pip'; enabled: boolean };
+  | { type: 'auto-pip'; enabled: boolean }
+  | { type: 'fetch-subs'; url: string };
 
 export interface BackgroundReply<T = unknown> {
   ok: boolean;

@@ -5,7 +5,8 @@ import { buildOverlay, type Overlay } from './overlay';
 import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
-import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
+import { hasDomCaptions } from './subtitleSources/domCaptions';
+import { attachPreciseDomCaptions } from './subtitleSources/siteCues';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
 import { findBestVideo, findPlayerRoot } from './videoDetector';
@@ -271,7 +272,7 @@ export class PipSession implements PipController {
         this.detachSource = attachTextTrack(this.video, onText);
         break;
       case 'dom':
-        this.detachSource = attachDomCaptions(this.current.playerRoot, onText);
+        this.detachSource = attachPreciseDomCaptions(this.video, this.current.playerRoot, onText);
         break;
       case 'off':
         onText('');
