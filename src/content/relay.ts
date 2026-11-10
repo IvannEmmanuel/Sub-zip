@@ -174,12 +174,20 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
   };
 
   const onOpen = async (e: MessageEvent) => {
-    const d = e.data as { nonce?: unknown; w?: unknown; h?: unknown };
+    const d = e.data as { nonce?: unknown; w?: unknown; h?: unknown; resume?: unknown };
     const source = e.source as Window;
     if (typeof d.nonce !== 'string' || !d.nonce) return;
     const nonce = d.nonce;
     const fail = (error: string) => post(source, nonce, { t: 'fail', error });
 
+    // The same frame came back with a new video (next episode): keep the window, just point it at the new player.
+    if (d.resume === true && session && !session.closed && session.source === source) {
+      session.nonce = nonce;
+      session.lastLines = '';
+      session.iframeNext = false;
+      post(source, nonce, { t: 'ready' });
+      return;
+    }
     if (session && !session.closed) return fail('Picture-in-Picture is already open for another video.');
     if (!isDocumentPipSupported()) return fail('Document Picture-in-Picture is not available.');
 
@@ -205,7 +213,8 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       const layerCtx = layer.getContext('2d');
       if (!ctx || !layerCtx) throw new Error('Canvas is not available.');
 
-      const media = new RemoteMedia((cmd) => post(source, nonce, { t: 'cmd', cmd }));
+      let hs: HostSession | undefined;
+      const media = new RemoteMedia((cmd) => hs && post(hs.source, hs.nonce, { t: 'cmd', cmd }));
       let overlay!: Overlay;
       overlay = buildOverlay(
         win,
@@ -231,6 +240,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
 
       const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', iframeNext: false, closed: false };
       session = s;
+      hs = s;
       topNext.watch = watchNextEpisode(document, (ok) => {
         topNext.found = ok;
         refreshNext(s);
@@ -248,6 +258,10 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
     if (!d || d.ns !== NS || !e.source || e.source === window) return;
     if (d.t === 'open') {
       void onOpen(e);
+      return;
+    }
+    if (d.t === 'resume?') {
+      if (session && !session.closed && session.source === e.source && typeof d.nonce === 'string') post(e.source as Window, d.nonce, { t: 'resume-ok' });
       return;
     }
     const s = session;
@@ -303,6 +317,25 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
 // SOURCE (the iframe that contains the video)
 // =============================================================================================
 
+/** Iframe: is there a PiP window already open for this very frame? (It is after the frame loaded another episode.) */
+export function askResume(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const nonce = crypto.randomUUID();
+    const done = (v: boolean) => {
+      window.clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      resolve(v);
+    };
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { ns?: string; t?: string; nonce?: string } | null;
+      if (e.source === window.top && d?.ns === NS && d.nonce === nonce && d.t === 'resume-ok') done(true);
+    };
+    const timer = window.setTimeout(() => done(false), 800);
+    window.addEventListener('message', onMessage);
+    post(window.top as Window, nonce, { t: 'resume?' });
+  });
+}
+
 export class RelaySession implements PipController {
   active: SourceId = 'off';
 
@@ -333,6 +366,7 @@ export class RelaySession implements PipController {
   private constructor(
     readonly video: HTMLVideoElement,
     private readonly deps: SessionDeps,
+    private readonly resume = false,
   ) {
     this.top = window.top as Window;
     this.playerRoot = findPlayerRoot(video);
@@ -349,9 +383,9 @@ export class RelaySession implements PipController {
   }
 
   /** Must be called directly from a user gesture (the click is shared with the top page). */
-  static async open(video: HTMLVideoElement, deps: SessionDeps): Promise<RelaySession> {
+  static async open(video: HTMLVideoElement, deps: SessionDeps, resume = false): Promise<RelaySession> {
     if (window === window.top) throw new Error('Relay is only for players inside a frame.');
-    const session = new RelaySession(video, deps);
+    const session = new RelaySession(video, deps, resume);
     try {
       await session.handshake();
       session.start();
@@ -385,7 +419,7 @@ export class RelaySession implements PipController {
       );
       window.addEventListener('message', onMessage);
       const r = this.video.getBoundingClientRect();
-      post(this.top, this.nonce, { t: 'open', w: this.video.videoWidth || r.width, h: this.video.videoHeight || r.height });
+      post(this.top, this.nonce, { t: 'open', resume: this.resume, w: this.video.videoWidth || r.width, h: this.video.videoHeight || r.height });
     });
   }
 
@@ -406,7 +440,15 @@ export class RelaySession implements PipController {
       this.sendState();
     });
     this.pumpTimer = window.setInterval(() => this.pump(), 1000 / FPS);
-    this.stateTimer = window.setInterval(() => this.sendState(), 1000); // heartbeat: also pushes late captions / history
+    this.stateTimer = window.setInterval(() => {
+      if (!this.video.isConnected) {
+        // The page swapped the player (next episode): let the content script reattach to the still-open window.
+        this.dispose(false);
+        this.deps.onLost?.();
+        return;
+      }
+      this.sendState();
+    }, 1000); // heartbeat: also pushes late captions / history
     this.setSource('auto');
     this.sendState();
   }

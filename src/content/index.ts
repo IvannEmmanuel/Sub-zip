@@ -2,7 +2,7 @@ import type { ActionResult, HistoryReply, Message, SourceId, Status } from '../l
 import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, type Settings } from '../lib/settings';
 import { initPageButton, showToast } from './pageButton';
 import { CanvasPipSession, isCanvasPipSupported } from './canvasPip';
-import { initRelayHost, RelaySession } from './relay';
+import { askResume, initRelayHost, RelaySession } from './relay';
 import { isDocumentPipSupported, PipSession, type LoadedFile, type PipController, type SessionDeps } from './session';
 import { getSubtitleTracks } from './subtitleSources/textTracks';
 import { findBestVideo } from './videoDetector';
@@ -89,6 +89,33 @@ function start(): void {
     return CanvasPipSession.open(video, deps);
   }
 
+  const makeDeps = (): SessionDeps => ({
+    settings,
+    getFile: () => file,
+    onClosed: () => {
+      session = null;
+    },
+    onLost: () => void resumeRelay(),
+  });
+
+  /** Iframe player that just loaded (or swapped) the next episode while our PiP window is still open: reattach. */
+  async function resumeRelay(): Promise<void> {
+    if (isTopFrame || session || opening || !(await askResume())) return;
+    for (let i = 0; i < 60 && !session; i++) {
+      const v = findBestVideo();
+      if (v && v.getBoundingClientRect().width > 0) {
+        try {
+          session = await RelaySession.open(v, makeDeps(), true);
+        } catch {
+          /* the window was closed meanwhile */
+        }
+        return;
+      }
+      await new Promise((r) => window.setTimeout(r, 500));
+    }
+  }
+  if (!isTopFrame) void resumeRelay();
+
   /** NOTE: must reach PipSession.open() synchronously — no awaits before it, or the user gesture expires. */
   async function togglePip(video: HTMLVideoElement): Promise<ActionResult> {
     if (session?.isOpen) {
@@ -97,13 +124,7 @@ function start(): void {
     }
     opening = true;
     try {
-      const deps = {
-        settings,
-        getFile: () => file,
-        onClosed: () => {
-          session = null;
-        },
-      };
+      const deps = makeDeps();
       session = await openSession(video, deps);
       return { ok: true, status: status(video) };
     } catch (error) {

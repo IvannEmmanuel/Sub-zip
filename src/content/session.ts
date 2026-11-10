@@ -19,6 +19,8 @@ export interface SessionDeps {
   settings: Settings;
   getFile(): LoadedFile | null;
   onClosed(): void;
+  /** Relay only: the page replaced the video (next episode); the PiP window is still open and can be reattached. */
+  onLost?(): void;
 }
 
 export function isDocumentPipSupported(): boolean {
