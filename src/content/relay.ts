@@ -344,7 +344,7 @@ export class RelaySession implements PipController {
     this.layerCtx = layerCtx;
     this.pipeline = new SubtitlePipeline(video, deps.settings, (lines) => {
       this.lines = lines;
-      this.sendState();
+      this.sendState(true); // forced: a new caption must not wait for the 250ms throttle
     });
   }
 
