@@ -104,6 +104,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   transition: background-color .15s ease, color .15s ease; }
 .btn:hover { background: rgba(255,255,255,.14); color: #fff; }
 .btn:focus-visible { outline: 2px solid #60A5FA; outline-offset: 1px; }
+.btn[hidden] { display: none; }
 .btn[aria-pressed="false"] { color: #9CA3AF; }
 .btn.primary { border-radius: 50%; background: #2563EB; color: #fff; }
 .btn.primary:hover { background: #1D4ED8; }
@@ -138,6 +139,8 @@ export interface OverlayHandlers {
   seekTo(time: number): void;
   /** Click the site's own "Skip intro" button. */
   skip(): void;
+  /** Go to the next episode (only offered while `setNext(true)`). */
+  next(): void;
 }
 
 export interface Overlay {
@@ -145,6 +148,8 @@ export interface Overlay {
   setLines(lines: Line[]): void;
   /** Shows the Skip button with this label, or hides it (null). */
   setSkip(label: string | null): void;
+  /** Shows or hides the Next-episode button. */
+  setNext(available: boolean): void;
   applySettings(settings: Settings): void;
   destroy(): void;
 }
@@ -260,6 +265,11 @@ export function buildOverlay(
   addButton({ id: 'play', label: 'Play / pause', icon: 'pause', primary: true }, togglePlay);
   addButton({ id: 'back', label: 'Back 10 seconds', icon: 'back', optional: true }, () => seek(-10));
   addButton({ id: 'fwd', label: 'Forward 10 seconds', icon: 'forward', optional: true }, () => seek(10));
+  const nextBtn = addButton({ id: 'next', label: 'Next episode', icon: 'skip' }, () => handlers.next());
+  nextBtn.hidden = true;
+  const setNext = (available: boolean) => {
+    nextBtn.hidden = !available;
+  };
   const muteBtn = addButton({ id: 'mute', label: 'Mute', icon: 'volume' }, toggleMute);
   const volWrap = doc.createElement('div');
   volWrap.className = 'vol';
@@ -586,6 +596,7 @@ export function buildOverlay(
     stage,
     setLines,
     setSkip,
+    setNext,
     applySettings,
     destroy() {
       win.clearTimeout(idleTimer);

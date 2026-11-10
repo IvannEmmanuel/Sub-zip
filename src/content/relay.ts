@@ -10,6 +10,7 @@ import type { HistoryEntry, Line, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type MediaLike, type Overlay } from './overlay';
 import { isDocumentPipSupported, type PipController, type SessionDeps } from './session';
+import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
@@ -28,6 +29,7 @@ type Cmd =
   | { c: 'volume'; volume: number }
   | { c: 'mute'; muted: boolean }
   | { c: 'skip' }
+  | { c: 'next' }
   | { c: 'source'; source: SourceId | 'auto' };
 
 interface RelayState {
@@ -38,6 +40,8 @@ interface RelayState {
   volume: number;
   muted: boolean;
   skip: string | null;
+  /** The iframe itself has a next episode to go to. */
+  next: boolean;
   lines: Line[];
   history: HistoryEntry[];
 }
@@ -139,6 +143,7 @@ interface HostSession {
   layer: HTMLCanvasElement;
   layerCtx: CanvasRenderingContext2D;
   lastLines: string;
+  iframeNext: boolean;
   closed: boolean;
 }
 
@@ -147,11 +152,24 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
   let session: HostSession | null = null;
   let settings = getSettings();
 
+  // The episode list usually lives in the top page, next to the player iframe.
+  const topNext = {
+    watch: null as { click(): void; stop(): void } | null,
+    found: false,
+    has() {
+      return this.found;
+    },
+  };
+  const refreshNext = (s: HostSession) => s.overlay.setNext(topNext.found || s.iframeNext);
+
   const teardown = (s: HostSession, notify: boolean) => {
     if (s.closed) return;
     s.closed = true;
     if (notify) post(s.source, s.nonce, { t: 'closed' });
     s.overlay.destroy();
+    topNext.watch?.stop();
+    topNext.watch = null;
+    topNext.found = false;
     if (session === s) session = null;
   };
 
@@ -205,13 +223,18 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
             media.currentTime = time;
           },
           skip: () => media.send({ c: 'skip' }),
+          next: () => (topNext.found ? topNext.watch?.click() : media.send({ c: 'next' })),
         },
         canvas,
         layer,
       );
 
-      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', closed: false };
+      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', iframeNext: false, closed: false };
       session = s;
+      topNext.watch = watchNextEpisode(document, (ok) => {
+        topNext.found = ok;
+        refreshNext(s);
+      });
       win.addEventListener('pagehide', () => teardown(s, true));
       post(source, nonce, { t: 'ready' });
     } catch (error) {
@@ -260,7 +283,9 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
         s.lastLines = key;
         s.overlay.setLines(st.lines);
       }
+      s.iframeNext = st.next;
       s.overlay.setSkip(st.skip);
+      refreshNext(s);
     } else if (d.t === 'bye') {
       s.win.close();
     }
@@ -292,6 +317,8 @@ export class RelaySession implements PipController {
   private detachSource: () => void = () => {};
   private unwatchSkip: () => void = () => {};
   private skip: SkipTarget | null = null;
+  private nextWatch: { click(): void; stop(): void } | null = null;
+  private hasNext = false;
   private lines: Line[] = [];
   private auto = true;
   private closed = false;
@@ -374,6 +401,10 @@ export class RelaySession implements PipController {
       this.skip = target;
       this.sendState();
     });
+    this.nextWatch = watchNextEpisode(document, (ok) => {
+      this.hasNext = ok;
+      this.sendState();
+    });
     this.pumpTimer = window.setInterval(() => this.pump(), 1000 / FPS);
     this.stateTimer = window.setInterval(() => this.sendState(), 1000); // heartbeat: also pushes late captions / history
     this.setSource('auto');
@@ -420,6 +451,9 @@ export class RelaySession implements PipController {
         break;
       case 'skip':
         this.skip?.click();
+        break;
+      case 'next':
+        this.nextWatch?.click();
         break;
       case 'source':
         this.setSource(cmd.source);
@@ -526,6 +560,7 @@ export class RelaySession implements PipController {
       volume: v.volume,
       muted: v.muted,
       skip: this.skip?.label ?? null,
+      next: this.hasNext,
       lines: this.lines,
       history: this.pipeline.history(),
     };
@@ -621,6 +656,7 @@ export class RelaySession implements PipController {
     this.video.removeEventListener('seeked', this.onSeeked);
     this.detachSource();
     this.unwatchSkip();
+    this.nextWatch?.stop();
     this.deps.onClosed();
   }
 }

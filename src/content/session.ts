@@ -2,6 +2,7 @@ import type { Cue } from '../lib/cues';
 import type { HistoryEntry, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
+import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
@@ -107,6 +108,7 @@ export class PipSession implements PipController {
   private auto = true;
   private skipTarget: SkipTarget | null = null;
   private unwatchSkip: () => void = () => {};
+  private nextWatch: { click(): void; stop(): void } | null = null;
 
   private constructor(
     adopted: Adopted,
@@ -119,6 +121,7 @@ export class PipSession implements PipController {
     this.pipeline = new SubtitlePipeline(adopted.video, deps.settings, (lines) => this.overlay.setLines(lines));
     this.overlay = this.buildOverlayFor(adopted.video);
     this.watchSkipIn(adopted.playerRoot);
+    this.nextWatch = watchNextEpisode(document, (ok) => this.overlay.setNext(ok));
 
     win.addEventListener('pagehide', () => this.restore());
 
@@ -164,6 +167,7 @@ export class PipSession implements PipController {
       history: () => this.pipeline.history(),
       seekTo: (time) => this.seek(time),
       skip: () => this.skipNow(),
+      next: () => this.nextWatch?.click(),
     });
   }
 
@@ -226,6 +230,8 @@ export class PipSession implements PipController {
     this.pipeline.setVideo(next);
     this.overlay = this.buildOverlayFor(next);
     this.watchSkipIn(this.current.playerRoot);
+    this.nextWatch?.stop();
+    this.nextWatch = watchNextEpisode(document, (ok) => this.overlay.setNext(ok));
     this.setSource(previousSource === 'file' ? 'file' : 'auto');
     if (next.paused) void next.play().catch(() => {});
   }
@@ -304,6 +310,7 @@ export class PipSession implements PipController {
     window.clearTimeout(this.followTimer);
     document.removeEventListener('playing', this.onAnyPlaying, true);
     this.unwatchSkip();
+    this.nextWatch?.stop();
     this.detachSource();
     release(this.current);
     this.overlay.destroy();

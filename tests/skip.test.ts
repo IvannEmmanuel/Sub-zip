@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { skipLabel } from '../src/content/skipIntro';
+import { nextLabel, skipLabel } from '../src/content/skipIntro';
+
+describe('nextLabel', () => {
+  it('recognises next-episode buttons', () => {
+    expect(nextLabel('Next Episode')).toBe('Next episode');
+    expect(nextLabel('NEXT EP »')).toBe('Next episode');
+    expect(nextLabel('Play next episode')).toBe('Next episode');
+    expect(nextLabel('Next episode 23')).toBe('Next episode');
+  });
+  it('ignores bare "Next" and unrelated text', () => {
+    expect(nextLabel('Next')).toBeNull();
+    expect(nextLabel('Next page')).toBeNull();
+    expect(nextLabel('Next episode will start after the credits roll in a moment')).toBeNull();
+  });
+});
 
 describe('skipLabel', () => {
   it('recognises skip buttons in common spellings', () => {

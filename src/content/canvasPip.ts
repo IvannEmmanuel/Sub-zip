@@ -2,6 +2,7 @@ import type { HistoryEntry, Line, SourceId } from '../lib/messaging';
 import type { Settings } from '../lib/settings';
 import { subtitleVars } from '../lib/subtitleStyle';
 import type { PipController, SessionDeps } from './session';
+import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
@@ -38,6 +39,7 @@ export class CanvasPipSession implements PipController {
   private retryTimer = 0;
   private skipTarget: SkipTarget | null = null;
   private unwatchSkip: () => void = () => {};
+  private nextWatch: { click(): void; stop(): void } | null = null;
 
   private constructor(
     readonly video: HTMLVideoElement,
@@ -118,6 +120,9 @@ export class CanvasPipSession implements PipController {
       this.skipTarget = target;
       this.setMediaAction('skipad', target ? () => target.click() : null); // Chrome shows a "Skip Ad" button in its PiP window
     });
+
+    // Chrome shows a "next track" button in its PiP window when this action is set.
+    this.nextWatch = watchNextEpisode(document, (ok) => this.setMediaAction('nexttrack', ok ? () => this.nextWatch?.click() : null));
 
     await pv.requestPictureInPicture();
     this.setSource('auto');
@@ -384,7 +389,9 @@ export class CanvasPipSession implements PipController {
     this.pipVideo.removeEventListener('volumechange', this.onPipVolume);
     this.pipVideo.removeEventListener('leavepictureinpicture', this.onLeave);
     this.unwatchSkip();
+    this.nextWatch?.stop();
     this.setMediaAction('skipad', null);
+    this.setMediaAction('nexttrack', null);
     this.unbindMediaSession();
     this.pipVideo.pause();
     this.pipVideo.srcObject = null;

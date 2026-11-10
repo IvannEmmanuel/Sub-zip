@@ -42,20 +42,58 @@ function isVisible(el: HTMLElement): boolean {
   return r.width > 0 && r.height > 0;
 }
 
-/** The first visible skip button inside `root`, or null. */
-export function findSkip(root: ParentNode): SkipTarget | null {
-  for (const el of root.querySelectorAll<HTMLElement>(SELECTOR)) {
-    const label =
-      skipLabel(el.innerText ?? el.textContent ?? '') ??
-      skipLabel(el.getAttribute('aria-label') ?? '') ??
-      skipLabel(el.title ?? '') ??
-      classLabel(el);
+// "Next episode", "Next Ep", "Play next episode", "Next episode 23". A bare "Next" is ignored: it is usually a carousel.
+const NEXT_RE = /^(?:play\s+)?next\s+(?:episode|ep)\b[^\p{L}\p{N}]*(?:\d+)?[^\p{L}\p{N}]*$/iu;
+const NEXT_CLASS_RE = /next[-_ ]?(?:ep|episode)/i;
+
+/** "NEXT EPISODE »" -> "Next episode". Returns null when the text is not a next-episode button label. */
+export function nextLabel(raw: string): string | null {
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (!text || text.length > 28) return null;
+  return NEXT_RE.test(text) ? 'Next episode' : null;
+}
+
+function clickTarget(el: HTMLElement): HTMLElement {
+  // A wrapper div with a "skip" / "next" class: click the real button inside it.
+  return el.matches(CLICKABLE) ? el : (el.querySelector<HTMLElement>(CLICKABLE) ?? el.closest<HTMLElement>(CLICKABLE) ?? el);
+}
+
+function firstVisible(root: ParentNode, selector: string, labelOf: (el: HTMLElement) => string | null): SkipTarget | null {
+  for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+    const label = labelOf(el);
     if (!label || !isVisible(el)) continue;
-    // A wrapper div with a "skip" class: click the real button inside it.
-    const target = el.matches(CLICKABLE) ? el : (el.querySelector<HTMLElement>(CLICKABLE) ?? el.closest<HTMLElement>(CLICKABLE) ?? el);
+    const target = clickTarget(el);
     return { label, click: () => target.click() };
   }
   return null;
+}
+
+const NEXT_SELECTOR = `${CLICKABLE},[class*="next" i],[id*="next" i]`;
+
+/** The first visible skip button inside `root`, or null. */
+export function findSkip(root: ParentNode): SkipTarget | null {
+  return firstVisible(
+    root,
+    SELECTOR,
+    (el) =>
+      skipLabel(el.innerText ?? el.textContent ?? '') ??
+      skipLabel(el.getAttribute('aria-label') ?? '') ??
+      skipLabel(el.title ?? '') ??
+      classLabel(el),
+  );
+}
+
+/** The site's own visible "Next episode" button inside `root`, or null. */
+export function findNextButton(root: ParentNode): SkipTarget | null {
+  return firstVisible(root, NEXT_SELECTOR, (el) => {
+    const cls = typeof el.className === 'string' ? el.className : '';
+    return (
+      nextLabel(el.innerText ?? el.textContent ?? '') ??
+      nextLabel(el.getAttribute('aria-label') ?? '') ??
+      nextLabel(el.title ?? '') ??
+      (NEXT_CLASS_RE.test(`${cls} ${el.id}`) ? 'Next episode' : null)
+    );
+  });
 }
 
 /**
