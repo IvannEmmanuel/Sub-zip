@@ -2,7 +2,8 @@ import type { ActionResult, HistoryReply, Message, SourceId, Status } from '../l
 import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, type Settings } from '../lib/settings';
 import { initPageButton, showToast } from './pageButton';
 import { CanvasPipSession, isCanvasPipSupported } from './canvasPip';
-import { isDocumentPipSupported, PipSession, type LoadedFile, type PipController } from './session';
+import { initRelayHost, RelaySession } from './relay';
+import { isDocumentPipSupported, PipSession, type LoadedFile, type PipController, type SessionDeps } from './session';
 import { getSubtitleTracks } from './subtitleSources/textTracks';
 import { findBestVideo } from './videoDetector';
 
@@ -24,6 +25,8 @@ function start(): void {
   let session: PipController | null = null;
   let file: LoadedFile | null = null;
   let opening = false; // PiP is being created: keep the page button hidden meanwhile
+  // The top page opens the PiP window for players that live in iframes (see relay.ts).
+  const relayHost = window === window.top ? initRelayHost(() => settings) : null;
 
   void loadSettings().then((s) => {
     settings = s;
@@ -32,6 +35,7 @@ function start(): void {
   onSettingsChanged((s) => {
     settings = s;
     session?.applySettings(s);
+    relayHost?.applySettings(s);
     syncAutoPip();
   });
 
@@ -69,6 +73,22 @@ function start(): void {
   const useDocumentPip = () => isTopFrame && isDocumentPipSupported();
   const isPipSupported = () => useDocumentPip() || isCanvasPipSupported();
 
+  /**
+   * Top page: the custom Document PiP window. Player inside an iframe: ask the top page to open that same window and
+   * stream the video to it (relay); only if that fails fall back to Chrome's own, control-less PiP window.
+   */
+  async function openSession(video: HTMLVideoElement, deps: SessionDeps): Promise<PipController> {
+    if (useDocumentPip()) return PipSession.open(video, deps);
+    if (!isTopFrame) {
+      try {
+        return await RelaySession.open(video, deps);
+      } catch {
+        /* no top page to talk to, or it refused: use the browser's own window below */
+      }
+    }
+    return CanvasPipSession.open(video, deps);
+  }
+
   /** NOTE: must reach PipSession.open() synchronously — no awaits before it, or the user gesture expires. */
   async function togglePip(video: HTMLVideoElement): Promise<ActionResult> {
     if (session?.isOpen) {
@@ -84,7 +104,7 @@ function start(): void {
           session = null;
         },
       };
-      session = await (useDocumentPip() ? PipSession.open(video, deps) : CanvasPipSession.open(video, deps));
+      session = await openSession(video, deps);
       return { ok: true, status: status(video) };
     } catch (error) {
       return { ok: false, error: describeError(error), status: status(video) };

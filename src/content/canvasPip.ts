@@ -2,6 +2,7 @@ import type { HistoryEntry, Line, SourceId } from '../lib/messaging';
 import type { Settings } from '../lib/settings';
 import { subtitleVars } from '../lib/subtitleStyle';
 import type { PipController, SessionDeps } from './session';
+import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
 import { attachFileCues } from './subtitleSources/fileCues';
@@ -35,6 +36,8 @@ export class CanvasPipSession implements PipController {
   private closed = false;
   private auto = true;
   private retryTimer = 0;
+  private skipTarget: SkipTarget | null = null;
+  private unwatchSkip: () => void = () => {};
 
   private constructor(
     readonly video: HTMLVideoElement,
@@ -111,6 +114,10 @@ export class CanvasPipSession implements PipController {
     pv.addEventListener('volumechange', this.onPipVolume);
     pv.addEventListener('leavepictureinpicture', this.onLeave);
     this.bindMediaSession();
+    this.unwatchSkip = watchSkip(this.playerRoot, (target) => {
+      this.skipTarget = target;
+      this.setMediaAction('skipad', target ? () => target.click() : null); // Chrome shows a "Skip Ad" button in its PiP window
+    });
 
     await pv.requestPictureInPicture();
     this.setSource('auto');
@@ -141,6 +148,22 @@ export class CanvasPipSession implements PipController {
     if (Math.abs(this.pipVideo.volume - this.video.volume) > 0.01) this.pipVideo.volume = this.video.volume;
   };
   private readonly onLeave = () => this.dispose();
+
+  private setMediaAction(action: string, handler: MediaSessionActionHandler | null): void {
+    try {
+      navigator.mediaSession?.setActionHandler(action as MediaSessionAction, handler);
+    } catch {
+      /* this Chrome does not know the action */
+    }
+  }
+
+  skipLabel(): string | null {
+    return this.skipTarget?.label ?? null;
+  }
+
+  skipNow(): void {
+    this.skipTarget?.click();
+  }
 
   private bindMediaSession(): void {
     const ms = navigator.mediaSession;
@@ -360,6 +383,8 @@ export class CanvasPipSession implements PipController {
     this.pipVideo.removeEventListener('pause', this.onPipPause);
     this.pipVideo.removeEventListener('volumechange', this.onPipVolume);
     this.pipVideo.removeEventListener('leavepictureinpicture', this.onLeave);
+    this.unwatchSkip();
+    this.setMediaAction('skipad', null);
     this.unbindMediaSession();
     this.pipVideo.pause();
     this.pipVideo.srcObject = null;

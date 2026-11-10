@@ -17,7 +17,11 @@ Hover a video and click **PiP + subs**, or click the toolbar icon, or press `Alt
 - **Open PiP when you leave the tab** (popup → Tools): uses Chrome's automatic Picture-in-Picture, so allow "Automatic picture-in-picture" for the site when Chrome asks. Chrome 134+ only; Brave and Firefox do not support it (use `Alt+P` there).
 - **Keyboard shortcuts in the PiP window**: `Space`/`K` play, `J`/`L` ∓10 s, ←/→ ∓5 s (Shift ∓10 s), ↑/↓ volume, `M` mute, `C` subtitles on/off, `+`/`-` subtitle size, `H` history, `T` translation.
 
-Click-a-word, the history panel and the shortcuts need the Document PiP window (Chrome 116+, top page). Players inside iframes fall back to Chrome's classic PiP, which still shows translated / dual subtitles but cannot host buttons.
+- **Skip intro**: when the site shows its own "Skip intro / opening / recap / credits" button, a Skip button appears in the PiP window (key `S`). It clicks the site's button.
+- **Players inside iframes** (most anime sites) get the same PiP window: the page that contains the player opens it and the iframe streams the video to it, so volume, seek, ±10 s, subtitles and Skip work there too. If that fails, Chrome's own PiP window is used (it only has play/pause, mute and a "Skip Ad" button).
+- **Site captions drawn on a canvas** (ASS renderers) are sent as a separate layer, so the size, up/down and hide buttons work on them. Subtitles burned into the video cannot be changed.
+
+Click-a-word and the history panel need the custom PiP window (Chrome 116+). Chrome's own fallback window still shows translated / dual subtitles but cannot host buttons.
 
 **Privacy:** nothing is sent anywhere unless translation is on or you click a word. Then the subtitle line / word goes to Google Translate (falling back to MyMemory) and, for English words, dictionaryapi.dev.
 

@@ -2,6 +2,7 @@ import type { Cue } from '../lib/cues';
 import type { HistoryEntry, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
+import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { attachDomCaptions, hasDomCaptions } from './subtitleSources/domCaptions';
 import { attachFileCues } from './subtitleSources/fileCues';
@@ -31,6 +32,10 @@ export interface PipController {
   available(): SourceId[];
   history(): HistoryEntry[];
   seek(time: number): void;
+  /** Label of the site's "Skip intro" button while it is showing, else null. */
+  skipLabel(): string | null;
+  /** Click that button. */
+  skipNow(): void;
   setSource(choice: SourceId | 'auto'): void;
   applySettings(settings: Settings): void;
   close(): void;
@@ -100,6 +105,8 @@ export class PipSession implements PipController {
   private readonly pollTimer: number;
   private followTimer = 0;
   private auto = true;
+  private skipTarget: SkipTarget | null = null;
+  private unwatchSkip: () => void = () => {};
 
   private constructor(
     adopted: Adopted,
@@ -111,6 +118,7 @@ export class PipSession implements PipController {
     this.settings = deps.settings;
     this.pipeline = new SubtitlePipeline(adopted.video, deps.settings, (lines) => this.overlay.setLines(lines));
     this.overlay = this.buildOverlayFor(adopted.video);
+    this.watchSkipIn(adopted.playerRoot);
 
     win.addEventListener('pagehide', () => this.restore());
 
@@ -155,7 +163,25 @@ export class PipSession implements PipController {
       close: () => this.win.close(),
       history: () => this.pipeline.history(),
       seekTo: (time) => this.seek(time),
+      skip: () => this.skipNow(),
     });
+  }
+
+  private watchSkipIn(root: Element): void {
+    this.unwatchSkip();
+    this.skipTarget = null;
+    this.unwatchSkip = watchSkip(root, (target) => {
+      this.skipTarget = target;
+      this.overlay.setSkip(target?.label ?? null);
+    });
+  }
+
+  skipLabel(): string | null {
+    return this.skipTarget?.label ?? null;
+  }
+
+  skipNow(): void {
+    this.skipTarget?.click();
   }
 
   // --- following ----------------------------------------------------------------------------
@@ -199,6 +225,7 @@ export class PipSession implements PipController {
     this.video = next;
     this.pipeline.setVideo(next);
     this.overlay = this.buildOverlayFor(next);
+    this.watchSkipIn(this.current.playerRoot);
     this.setSource(previousSource === 'file' ? 'file' : 'auto');
     if (next.paused) void next.play().catch(() => {});
   }
@@ -276,6 +303,7 @@ export class PipSession implements PipController {
     window.clearInterval(this.pollTimer);
     window.clearTimeout(this.followTimer);
     document.removeEventListener('playing', this.onAnyPlaying, true);
+    this.unwatchSkip();
     this.detachSource();
     release(this.current);
     this.overlay.destroy();

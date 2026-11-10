@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from '../lib/settings';
 import { applySubtitleVars } from '../lib/subtitleStyle';
 import type { HistoryEntry, Line } from '../lib/messaging';
 import type { Settings, TranslateMode } from '../lib/settings';
@@ -11,8 +12,14 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
 
 .stage { position: relative; width: 100%; height: 100%; container-type: size; background: #000; outline: none; }
-.stage > video { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+.stage > video, .stage > canvas.surface { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
   max-width: none !important; max-height: none !important; object-fit: contain !important; transform: none !important; }
+/* Captions the site draws on its own canvas arrive as a separate transparent layer, so the subtitle controls
+   (size, up/down, hide) work on them too. The layer is anchored near the bottom, where such captions sit. */
+.stage > canvas.layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;
+  transform-origin: 50% 92%; transform: translateY(var(--layer-y, 0%)) scale(var(--sub-scale, 1)); transition: transform .18s ease; }
+.stage.pos-bottom.controls > canvas.layer { transform: translateY(calc(var(--layer-y, 0%) - var(--bar-h))) scale(var(--sub-scale, 1)); }
+.stage.subs-off > canvas.layer { display: none; }
 .stage.hide-cursor { cursor: none; }
 
 /* Subtitles: sized from the PiP window width so they stay readable when it is resized. */
@@ -28,6 +35,16 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .cue.tr { color: #FDE68A; }
 .w { pointer-events: auto; cursor: pointer; border-radius: .15em; }
 .w:hover { background: rgba(96,165,250,.5); }
+
+/* Skip intro: stays visible even when the controls are hidden, like on streaming sites. */
+.skip { position: absolute; right: 12px; bottom: 14px; z-index: 3; display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px 0 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 18px;
+  background: rgba(11,15,23,.88); color: #fff; font: 600 13px/1 system-ui, "Segoe UI", Roboto, sans-serif; cursor: pointer;
+  transition: bottom .18s ease, background-color .15s ease; }
+.skip[hidden] { display: none; }
+.skip:hover { background: #2563EB; border-color: #2563EB; }
+.skip:focus-visible { outline: 2px solid #60A5FA; outline-offset: 2px; }
+.stage.controls .skip { bottom: calc(var(--bar-h) + 10px); }
 
 /* Word lookup card and history panel. */
 .dict { position: absolute; left: 50%; bottom: calc(var(--bar-h) + 10px); z-index: 5; width: min(92%, 420px);
@@ -92,8 +109,19 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .btn.primary:hover { background: #1D4ED8; }
 .sep { flex: none; width: 1px; height: 20px; margin: 0 4px; background: rgba(255,255,255,.18); }
 @container (max-width: 440px) { .btn.optional, .sep.optional { display: none; } }
-@media (prefers-reduced-motion: reduce) { .subs, .bar, .btn, .volume { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .subs, .bar, .btn, .volume, .skip, .stage > canvas.layer { transition: none; } }
 `;
+
+/** What the overlay needs from a video: a real <video>, or a stand-in for one that lives in another frame. */
+export interface MediaLike extends EventTarget {
+  paused: boolean;
+  currentTime: number;
+  volume: number;
+  muted: boolean;
+  readonly duration: number;
+  play(): Promise<void>;
+  pause(): void;
+}
 
 interface ButtonSpec {
   id: string;
@@ -108,11 +136,15 @@ export interface OverlayHandlers {
   close(): void;
   history(): HistoryEntry[];
   seekTo(time: number): void;
+  /** Click the site's own "Skip intro" button. */
+  skip(): void;
 }
 
 export interface Overlay {
   stage: HTMLElement;
   setLines(lines: Line[]): void;
+  /** Shows the Skip button with this label, or hides it (null). */
+  setSkip(label: string | null): void;
   applySettings(settings: Settings): void;
   destroy(): void;
 }
@@ -132,10 +164,15 @@ function fmtTime(t: number): string {
 
 export function buildOverlay(
   win: Window,
-  video: HTMLVideoElement,
+  video: MediaLike,
   initial: Settings,
   handlers: OverlayHandlers,
+  /** What is drawn behind the controls. Defaults to `video` itself (a real <video> element). */
+  surface?: HTMLElement,
+  /** A transparent picture layer drawn above `surface` (the site's own caption canvas). */
+  layer?: HTMLElement,
 ): Overlay {
+  const surfaceEl = surface ?? (video as unknown as HTMLElement);
   const doc = win.document;
   let settings = initial;
 
@@ -268,8 +305,27 @@ export function buildOverlay(
   );
   addButton({ id: 'close', label: 'Close Picture-in-Picture', icon: 'close' }, handlers.close);
 
-  stage.append(subs, hist, dict, bar);
-  stage.prepend(video);
+  const skipBtn = doc.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.className = 'skip';
+  skipBtn.hidden = true;
+  skipBtn.addEventListener('click', () => handlers.skip());
+  const setSkip = (label: string | null) => {
+    if (!label) {
+      skipBtn.hidden = true;
+      return;
+    }
+    if (skipBtn.dataset.label !== label) {
+      skipBtn.dataset.label = label;
+      skipBtn.innerHTML = `${iconSvg('skip', 16)}<span></span>`;
+      (skipBtn.lastElementChild as HTMLElement).textContent = label; // textContent: the label comes from the page
+    }
+    skipBtn.hidden = false;
+  };
+
+  stage.append(subs, hist, dict, skipBtn, bar);
+  stage.prepend(surfaceEl);
+  if (layer) surfaceEl.after(layer);
   doc.body.append(stage);
 
   // --- state sync -----------------------------------------------------------------------------
@@ -338,7 +394,7 @@ export function buildOverlay(
   stage.addEventListener('pointermove', showControls);
   stage.addEventListener('pointerdown', showControls);
   bar.addEventListener('focusin', showControls);
-  video.addEventListener('click', togglePlay);
+  surfaceEl.addEventListener('click', togglePlay);
 
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -353,6 +409,10 @@ export function buildOverlay(
       case 'j': seek(-10); break;
       case 'l': seek(10); break;
       case 'h': toggleHistory(); break;
+      case 's':
+        if (skipBtn.hidden) return;
+        handlers.skip();
+        break;
       case 't': cycleTranslate(); break;
       case '+':
       case '=': handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }); break;
@@ -379,6 +439,9 @@ export function buildOverlay(
   const applySettings = (next: Settings) => {
     settings = next;
     applySubtitleVars(stage, next);
+    // Same intent as the text subtitles: "distance from the edge" moves the layer relative to where the site draws it.
+    const shift = next.position === 'bottom' ? -(next.offset - DEFAULT_SETTINGS.offset) : -(80 - next.offset);
+    stage.style.setProperty('--layer-y', `${shift}%`);
     stage.classList.toggle('pos-bottom', next.position === 'bottom');
     stage.classList.toggle('pos-top', next.position === 'top');
     const tr = buttons.get('translate');
@@ -522,6 +585,7 @@ export function buildOverlay(
   return {
     stage,
     setLines,
+    setSkip,
     applySettings,
     destroy() {
       win.clearTimeout(idleTimer);
@@ -530,7 +594,7 @@ export function buildOverlay(
       video.removeEventListener('pause', syncPlayState);
       video.removeEventListener('volumechange', syncMute);
       for (const e of progressEvents) video.removeEventListener(e, syncProgress);
-      video.removeEventListener('click', togglePlay);
+      surfaceEl.removeEventListener('click', togglePlay);
       doc.removeEventListener('keydown', onKey);
       // Remove our DOM so a new overlay can be built in the same window (when PiP follows to the next video).
       // The video must already have been handed back to the page by the caller; if not, it goes with the stage.
