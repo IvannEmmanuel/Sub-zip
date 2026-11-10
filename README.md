@@ -37,3 +37,9 @@ npm run build   # production build into dist/ (commit dist/ so ZIP downloads jus
 ```
 In dev mode the extension needs the dev server running. Content-script edits reload the page automatically; popup edits hot-reload. Reload the extension card manually after changing `manifest.config.ts`.
 Manual test page: `tests/manual/demo.html`.
+
+## Subtitles don't show on a site?
+1. Reload the extension, then **refresh the video tab** (pages opened before a reload keep the old code).
+2. Make sure subtitles are turned on in the site's own player, play for a few seconds, then open PiP.
+3. Press **D** in the PiP window: the box shows where the extension looks for captions (text tracks, page text, subtitle file, caption canvas). Send a screenshot of it with the site name when reporting a problem.
+4. As a last resort use **Load .srt / .vtt file** in the popup. Subtitles burned into the video picture itself cannot be separated from it.

@@ -2,6 +2,11 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## 0.2.1
+- Subtitles on more sites: if the captions are drawn by the page around the player frame, they are now read from there.
+- If a site loads one subtitle file and its captions cannot be read as text, that file is used (the file matching your language is chosen when there are several; thumbnail tracks are ignored).
+- Fixed captions being skipped inside players whose wrapper class mentions "controls".
+
 ## 0.2.0
 - Picture-in-Picture for players inside iframes (most anime and movie sites): full controls, volume, seek bar, ±10 s.
 - Skip intro / opening / recap / credits button in the PiP window when the site has one.

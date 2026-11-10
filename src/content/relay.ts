@@ -14,9 +14,9 @@ import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { hasDomCaptions } from './subtitleSources/domCaptions';
-import { overlayInfo } from './subtitleSources/overlayText';
+import { createOverlayReader, overlayInfo } from './subtitleSources/overlayText';
 import { watchSiteSubs } from './subtitleSources/siteSubs';
-import type { Cue } from '../lib/cues';
+import { findActive, type Cue } from '../lib/cues';
 import { attachPreciseDomCaptions, preciseInfo } from './subtitleSources/siteCues';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
@@ -34,6 +34,7 @@ type Cmd =
   | { c: 'mute'; muted: boolean }
   | { c: 'skip' }
   | { c: 'next' }
+  | { c: 'hosttext'; text: string }
   | { c: 'source'; source: SourceId | 'auto' };
 
 interface RelayState {
@@ -148,6 +149,7 @@ interface HostSession {
   layer: HTMLCanvasElement;
   layerCtx: CanvasRenderingContext2D;
   lastLines: string;
+  hostTimer: number;
   iframeNext: boolean;
   /** Last time the player frame sent us anything (performance.now()). */
   lastSeen: number;
@@ -176,6 +178,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
     s.closed = true;
     if (notify) post(s.source, s.nonce, { t: 'closed' });
     s.overlay.destroy();
+    window.clearInterval(s.hostTimer);
     topNext.watch?.stop();
     topNext.watch = null;
     topNext.found = false;
@@ -249,9 +252,24 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
         layer,
       );
 
-      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', iframeNext: false, lastSeen: performance.now(), closed: false };
+      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', hostTimer: 0, iframeNext: false, lastSeen: performance.now(), closed: false };
       session = s;
       hs = s;
+      // Some sites draw the captions in the page AROUND the player frame, where the frame cannot see them: read them here.
+      const frameRect = () => {
+        const frames = [...document.querySelectorAll('iframe')];
+        const mine = frames.find((f) => f.contentWindow === source) ?? frames.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+        return mine ? mine.getBoundingClientRect() : null;
+      };
+      const readAround = createOverlayReader(frameRect, () => media.currentTime);
+      let lastAround = '';
+      s.hostTimer = window.setInterval(() => {
+        if (s.closed) return;
+        const text = readAround();
+        if (text === lastAround) return;
+        lastAround = text;
+        post(s.source, s.nonce, { t: 'cmd', cmd: { c: 'hosttext', text } });
+      }, 300);
       topNext.watch = watchNextEpisode(document, (ok) => {
         topNext.found = ok;
         refreshNext(s);
@@ -369,6 +387,10 @@ export class RelaySession implements PipController {
   private siteCues: Cue[] | null = null;
   private unwatchSiteSubs: () => void = () => {};
   private usingSiteCues = false;
+  private fileHits = 0;
+  /** Captions the top page draws over this frame (read by the host) and what the frame's own page text says. */
+  private hostText = '';
+  private domText = '';
   private layerSeen = false;
   private frames = 0;
   private framesAt = performance.now();
@@ -522,6 +544,10 @@ export class RelaySession implements PipController {
       case 'next':
         this.nextWatch?.click();
         break;
+      case 'hosttext':
+        this.hostText = typeof cmd.text === 'string' ? cmd.text.slice(0, 400) : '';
+        if (this.active === 'dom' && !this.domText) this.pipeline.push(this.hostText);
+        break;
       case 'source':
         this.setSource(cmd.source);
         break;
@@ -616,13 +642,20 @@ export class RelaySession implements PipController {
 
   // --- state ---------------------------------------------------------------------------------
   /**
-   * The page draws captions on a canvas (no text to compare) and loaded exactly one subtitle file: that file is the
-   * captions. Show them as text timed from the video clock instead of copying the canvas, which lags in a hidden tab.
+   * The page loaded exactly one subtitle file but its captions cannot be read as text here (a canvas, or drawn by the
+   * page around this frame): that file is the captions. Show them as text timed from the video clock instead of copying the canvas, which lags in a hidden tab.
    */
   private adoptCanvasFile(): void {
-    if (this.siteCues || this.closed || !this.layerSeen || preciseInfo.domText || !preciseInfo.single) return;
-    if (this.deps.getFile()) return;
-    this.siteCues = preciseInfo.single;
+    const file = preciseInfo.single;
+    if (this.siteCues || this.closed || preciseInfo.domText || !file || this.deps.getFile()) return;
+    if (getSubtitleTracks(this.video).length) return; // real text tracks are used instead
+    if (!this.layerSeen) {
+      // No canvas either: the captions are drawn somewhere we cannot read (e.g. by the page around this frame). Use
+      // the file once it has had a line due while the video plays, a few times, so it really belongs to this video.
+      if (overlayInfo.texts > 0 || this.video.paused || !findActive(file, this.video.currentTime)) return;
+      if (++this.fileHits < 3) return;
+    }
+    this.siteCues = file;
     if (this.auto) this.setSource('auto');
   }
 
@@ -686,6 +719,7 @@ frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
     this.detachSource();
     this.detachSource = () => {};
     this.usingSiteCues = false;
+    this.domText = '';
 
     const avail = this.available();
     const id: SourceId =
@@ -710,7 +744,10 @@ frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
         this.detachSource = attachTextTrack(this.video, onText);
         break;
       case 'dom':
-        this.detachSource = attachPreciseDomCaptions(this.video, this.playerRoot, onText);
+        this.detachSource = attachPreciseDomCaptions(this.video, this.playerRoot, (text) => {
+          this.domText = text;
+          onText(text || this.hostText);
+        });
         break;
       case 'off':
         onText('');

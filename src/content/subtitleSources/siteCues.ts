@@ -15,6 +15,13 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 /** For the diagnostics box. */
 export const preciseInfo = { files: 0, adopted: false, domText: false, single: null as Cue[] | null };
 
+const LANG = (navigator.language || 'en').toLowerCase().split('-')[0] ?? 'en';
+const WANTED = new RegExp(`(^|[^a-z])(${LANG}|en|eng|english)([^a-z]|$)`, 'i');
+/** Higher = more likely the viewer's language, judged from the file name. Ties keep the order the files were loaded in. */
+function rank(url: string): number {
+  return WANTED.test(url.split('/').pop() ?? url) ? 1 : 0;
+}
+
 interface Candidate {
   url: string;
   cues: Cue[];
@@ -67,11 +74,13 @@ export function attachPreciseDomCaptions(
       const text = await fetchText(e.name);
       if (!text || stopped) continue;
       const cues = parseAnySubtitles(text);
+      // Thumbnail / storyboard tracks are .vtt files too: their "text" is image references, never captions.
+      if (/thumb|sprite|storyboard|preview|chapter/i.test(e.name) || cues.slice(0, 5).some((c) => /#xywh=|\.(?:jpe?g|png|webp)/i.test(c.text))) continue;
       if (cues.length >= 3) {
         candidates.push({ url: e.name, cues, hits: 0 });
         preciseInfo.files = candidates.length;
-        // Exactly one file: if the page draws its captions on a canvas (no text to compare with), this is the one.
-        preciseInfo.single = candidates.length === 1 ? cues : null;
+        // The file to use when the captions cannot be read from the page: the only one, else the best language match.
+        preciseInfo.single = [...candidates].sort((a, b) => rank(b.url) - rank(a.url))[0]?.cues ?? null;
       }
     }
   };

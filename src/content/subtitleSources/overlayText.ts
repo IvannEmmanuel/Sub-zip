@@ -48,7 +48,7 @@ export function createOverlayReader(area: () => DOMRect | null, clock: () => num
         if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
         for (const el of document.elementsFromPoint(x, y)) {
           if (!(el instanceof HTMLElement)) continue;
-          if (el.tagName === 'VIDEO') break; // everything below the video is page background
+          if (el.tagName === 'VIDEO' || el.tagName === 'IFRAME') break; // everything below is the video / the player frame
           if (!SKIP_TAGS.has(el.tagName)) hits.add(el);
         }
       }
