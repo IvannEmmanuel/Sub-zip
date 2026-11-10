@@ -100,7 +100,14 @@ function start(): void {
 
   /** Iframe player that just loaded (or swapped) the next episode while our PiP window is still open: reattach. */
   async function resumeRelay(): Promise<void> {
-    if (isTopFrame || session || opening || !(await askResume())) return;
+    if (isTopFrame || session || opening) return;
+    // The window's old player may not count as gone yet: ask a few times.
+    let wanted = false;
+    for (let i = 0; i < 5 && !wanted; i++) {
+      wanted = await askResume();
+      if (!wanted) await new Promise((r) => window.setTimeout(r, 1000));
+    }
+    if (!wanted || session) return;
     for (let i = 0; i < 60 && !session; i++) {
       const v = findBestVideo();
       if (v && v.getBoundingClientRect().width > 0) {

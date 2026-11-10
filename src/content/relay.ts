@@ -144,6 +144,8 @@ interface HostSession {
   layerCtx: CanvasRenderingContext2D;
   lastLines: string;
   iframeNext: boolean;
+  /** Last time the player frame sent us anything (performance.now()). */
+  lastSeen: number;
   closed: boolean;
 }
 
@@ -160,6 +162,8 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       return this.found;
     },
   };
+  // The site may swap the whole player iframe (a new element = a new window) when the next episode starts.
+  const canAdopt = (s: HostSession, from: Window) => s.source === from || s.source.closed || performance.now() - s.lastSeen > 3000;
   const refreshNext = (s: HostSession) => s.overlay.setNext(topNext.found || s.iframeNext);
 
   const teardown = (s: HostSession, notify: boolean) => {
@@ -181,7 +185,9 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
     const fail = (error: string) => post(source, nonce, { t: 'fail', error });
 
     // The same frame came back with a new video (next episode): keep the window, just point it at the new player.
-    if (d.resume === true && session && !session.closed && session.source === source) {
+    if (d.resume === true && session && !session.closed && canAdopt(session, source)) {
+      session.source = source;
+      session.lastSeen = performance.now();
       session.nonce = nonce;
       session.lastLines = '';
       session.iframeNext = false;
@@ -238,7 +244,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
         layer,
       );
 
-      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', iframeNext: false, closed: false };
+      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', iframeNext: false, lastSeen: performance.now(), closed: false };
       session = s;
       hs = s;
       topNext.watch = watchNextEpisode(document, (ok) => {
@@ -261,12 +267,13 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       return;
     }
     if (d.t === 'resume?') {
-      if (session && !session.closed && session.source === e.source && typeof d.nonce === 'string') post(e.source as Window, d.nonce, { t: 'resume-ok' });
+      if (session && !session.closed && canAdopt(session, e.source as Window) && typeof d.nonce === 'string') post(e.source as Window, d.nonce, { t: 'resume-ok' });
       return;
     }
     const s = session;
     if (!s || s.closed || d.nonce !== s.nonce || e.source !== s.source) return; // not the iframe that opened this window
 
+    s.lastSeen = performance.now();
     if (d.t === 'frame') {
       const { bitmap, layer } = d as unknown as { bitmap?: ImageBitmap; layer?: ImageBitmap | null };
       if (layer) {
