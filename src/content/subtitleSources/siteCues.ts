@@ -12,6 +12,9 @@ import { attachDomCaptions } from './domCaptions';
 const SUB_URL = /\.(?:vtt|srt|ass|ssa)(?:[?#]|$)/i;
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
+/** For the diagnostics box. */
+export const preciseInfo = { files: 0, adopted: false, domText: false, single: null as Cue[] | null };
+
 interface Candidate {
   url: string;
   cues: Cue[];
@@ -54,12 +57,19 @@ export function attachPreciseDomCaptions(video: HTMLVideoElement, root: Element,
       const text = await fetchText(e.name);
       if (!text || stopped) continue;
       const cues = parseAnySubtitles(text);
-      if (cues.length >= 3) candidates.push({ url: e.name, cues, hits: 0 });
+      if (cues.length >= 3) {
+        candidates.push({ url: e.name, cues, hits: 0 });
+        preciseInfo.files = candidates.length;
+        // Exactly one file: if the page draws its captions on a canvas (no text to compare with), this is the one.
+        preciseInfo.single = candidates.length === 1 ? cues : null;
+      }
     }
   };
 
   // Compare only when the page's text has been steady for a moment, so a late update at a boundary is not a mismatch.
   const verify = () => {
+    preciseInfo.adopted = adopted !== null;
+    preciseInfo.domText = domText !== '';
     if (!domText || performance.now() - domSince < 700) return;
     const want = norm(domText);
     if (!want) return;

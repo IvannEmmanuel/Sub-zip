@@ -58,6 +58,9 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .dict ul { margin: 2px 0 0; padding-left: 18px; }
 .dict .x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; }
 .dict .muted { color: #9CA3AF; }
+.diag { position: absolute; left: 8px; top: 8px; z-index: 6; max-width: calc(100% - 16px); padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.78);
+  color: #E5E7EB; font: 11px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap; pointer-events: none; }
+.diag[hidden] { display: none; }
 .hist { position: absolute; inset: 0 0 var(--bar-h) 0; z-index: 4; overflow: auto; padding: 10px;
   background: rgba(3,7,18,.93); }
 .hist h3 { margin: 0 0 6px; padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
@@ -150,6 +153,8 @@ export interface Overlay {
   setSkip(label: string | null): void;
   /** Shows or hides the Next-episode button. */
   setNext(available: boolean): void;
+  /** Text for the diagnostics box (press D in the window to show it). */
+  setDiag(text: string): void;
   applySettings(settings: Settings): void;
   destroy(): void;
 }
@@ -333,7 +338,10 @@ export function buildOverlay(
     skipBtn.hidden = false;
   };
 
-  stage.append(subs, hist, dict, skipBtn, bar);
+  const diag = doc.createElement('div');
+  diag.className = 'diag';
+  diag.hidden = true;
+  stage.append(subs, hist, dict, skipBtn, diag, bar);
   stage.prepend(surfaceEl);
   if (layer) surfaceEl.after(layer);
   doc.body.append(stage);
@@ -419,6 +427,7 @@ export function buildOverlay(
       case 'j': seek(-10); break;
       case 'l': seek(10); break;
       case 'h': toggleHistory(); break;
+      case 'd': diag.hidden = !diag.hidden; break;
       case 's':
         if (skipBtn.hidden) return;
         handlers.skip();
@@ -597,6 +606,9 @@ export function buildOverlay(
     setLines,
     setSkip,
     setNext,
+    setDiag: (text) => {
+      if (!diag.hidden) diag.textContent = text;
+    },
     applySettings,
     destroy() {
       win.clearTimeout(idleTimer);

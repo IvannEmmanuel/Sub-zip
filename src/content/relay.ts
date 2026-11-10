@@ -14,7 +14,9 @@ import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { hasDomCaptions } from './subtitleSources/domCaptions';
-import { attachPreciseDomCaptions } from './subtitleSources/siteCues';
+import { watchSiteSubs } from './subtitleSources/siteSubs';
+import type { Cue } from '../lib/cues';
+import { attachPreciseDomCaptions, preciseInfo } from './subtitleSources/siteCues';
 import { attachFileCues } from './subtitleSources/fileCues';
 import { attachTextTrack, getSubtitleTracks } from './subtitleSources/textTracks';
 import { findPlayerRoot } from './videoDetector';
@@ -45,6 +47,7 @@ interface RelayState {
   next: boolean;
   lines: Line[];
   history: HistoryEntry[];
+  diag: string;
 }
 
 function post(target: Window, nonce: string, msg: object, transfer: Transferable[] = []): void {
@@ -306,6 +309,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
         s.overlay.setLines(st.lines);
       }
       s.iframeNext = st.next;
+      s.overlay.setDiag(st.diag ?? '');
       s.overlay.setSkip(st.skip);
       refreshNext(s);
     } else if (d.t === 'bye') {
@@ -360,6 +364,14 @@ export class RelaySession implements PipController {
   private skip: SkipTarget | null = null;
   private nextWatch: { click(): void; stop(): void } | null = null;
   private hasNext = false;
+  /** The .ass/.vtt the page's canvas caption renderer was given (see public/subpip-hook.js). */
+  private siteCues: Cue[] | null = null;
+  private unwatchSiteSubs: () => void = () => {};
+  private usingSiteCues = false;
+  private layerSeen = false;
+  private frames = 0;
+  private framesAt = performance.now();
+  private fps = 0;
   private lines: Line[] = [];
   private auto = true;
   private closed = false;
@@ -443,6 +455,10 @@ export class RelaySession implements PipController {
       this.skip = target;
       this.sendState();
     });
+    this.unwatchSiteSubs = watchSiteSubs((cues) => {
+      this.siteCues = cues;
+      if (this.auto) this.setSource('auto');
+    });
     this.nextWatch = watchNextEpisode(document, (ok) => {
       this.hasNext = ok;
       this.sendState();
@@ -521,6 +537,8 @@ export class RelaySession implements PipController {
     if (this.video.paused && !this.dirty && now - this.lastSent < 1000) return;
     this.dirty = false;
     const hasLayer = this.compose();
+    this.layerSeen = hasLayer;
+    this.frames++;
     this.inflight = true;
     this.lastSent = now;
     Promise.all([createImageBitmap(this.canvas), hasLayer ? createImageBitmap(this.layer) : Promise.resolve(null)]).then(
@@ -557,7 +575,7 @@ export class RelaySession implements PipController {
     } catch {
       /* video not ready yet */
     }
-    return this.drawOverlayCanvases(W, H);
+    return this.usingSiteCues ? false : this.drawOverlayCanvases(W, H);
   }
 
   /** Players that draw captions on their own canvas over the video (ASS renderers): copy those into a separate layer. */
@@ -596,6 +614,33 @@ export class RelaySession implements PipController {
   }
 
   // --- state ---------------------------------------------------------------------------------
+  /**
+   * The page draws captions on a canvas (no text to compare) and loaded exactly one subtitle file: that file is the
+   * captions. Show them as text timed from the video clock instead of copying the canvas, which lags in a hidden tab.
+   */
+  private adoptCanvasFile(): void {
+    if (this.siteCues || this.closed || !this.layerSeen || preciseInfo.domText || !preciseInfo.single) return;
+    if (this.deps.getFile()) return;
+    this.siteCues = preciseInfo.single;
+    if (this.auto) this.setSource('auto');
+  }
+
+  private diag(): string {
+    const now = performance.now();
+    if (now - this.framesAt > 2000) {
+      this.fps = Math.round((this.frames * 1000) / (now - this.framesAt));
+      this.frames = 0;
+      this.framesAt = now;
+    }
+    const site = !preciseInfo.files ? 'no subtitle file seen' : preciseInfo.adopted ? `file ${preciseInfo.files} found, timed from the file` : `file ${preciseInfo.files} found, not matching the page text`;
+    return `source: ${this.active}
+page text captions: ${preciseInfo.domText ? 'yes' : 'none now'}
+site subtitle file: ${site}
+caption canvas layer: ${this.usingSiteCues ? 'replaced by text from the page subtitle file' : this.layerSeen ? 'yes' : 'no'}
+libass/JASSUB file seen: ${this.siteCues ? this.siteCues.length + ' lines' : 'no'}
+frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
+  }
+
   private sendState(force = false): void {
     if (this.closed) return;
     const now = performance.now();
@@ -611,6 +656,7 @@ export class RelaySession implements PipController {
       muted: v.muted,
       skip: this.skip?.label ?? null,
       next: this.hasNext,
+      diag: this.diag(),
       lines: this.lines,
       history: this.pipeline.history(),
     };
@@ -622,7 +668,7 @@ export class RelaySession implements PipController {
     const list: SourceId[] = [];
     if (getSubtitleTracks(this.video).length) list.push('tracks');
     if (hasDomCaptions(this.playerRoot) || this.playerRoot.classList.contains('html5-video-player')) list.push('dom');
-    if (this.deps.getFile()) list.push('file');
+    if (this.deps.getFile() || this.siteCues) list.push('file');
     list.push('off');
     return list;
   }
@@ -633,10 +679,12 @@ export class RelaySession implements PipController {
       // Tracks / caption layers often appear after playback starts: keep looking while nothing is attached.
       this.retryTimer = window.setInterval(() => {
         if (this.auto && this.active === 'off' && this.available().length > 1) this.setSource('auto');
+        this.adoptCanvasFile();
       }, 800);
     }
     this.detachSource();
     this.detachSource = () => {};
+    this.usingSiteCues = false;
 
     const avail = this.available();
     const id: SourceId =
@@ -650,7 +698,11 @@ export class RelaySession implements PipController {
     switch (id) {
       case 'file': {
         const file = this.deps.getFile();
-        if (file) this.detachSource = attachFileCues(this.video, file.cues, window, onText);
+        const cues = file?.cues ?? this.siteCues;
+        // Text from the page's own subtitle file is timed from the video clock, so it never waits for the page's
+        // canvas renderer (which stalls while the tab is hidden). Its picture layer is then left out to avoid doubles.
+        this.usingSiteCues = !file && !!this.siteCues;
+        if (cues) this.detachSource = attachFileCues(this.video, cues, window, onText);
         break;
       }
       case 'tracks':
@@ -706,6 +758,7 @@ export class RelaySession implements PipController {
     this.video.removeEventListener('seeked', this.onSeeked);
     this.detachSource();
     this.unwatchSkip();
+    this.unwatchSiteSubs();
     this.nextWatch?.stop();
     this.deps.onClosed();
   }

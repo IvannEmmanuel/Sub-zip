@@ -7,6 +7,31 @@ function flashBadge(tabId: number, text: string): void {
   setTimeout(() => void chrome.action.setBadgeText({ text: '', tabId }), 3500);
 }
 
+// --- page hook --------------------------------------------------------------------------------
+// Registered once (it persists); lets us see which subtitle file a canvas-based caption renderer was given.
+async function registerHook(): Promise<void> {
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: ['subpip-hook'] }).catch(() => {});
+    await chrome.scripting.registerContentScripts([
+      {
+        id: 'subpip-hook',
+        matches: ['<all_urls>'],
+        js: ['subpip-hook.js'],
+        runAt: 'document_start',
+        allFrames: true,
+        matchOriginAsFallback: true,
+        world: 'MAIN',
+        persistAcrossSessions: true,
+      },
+    ]);
+  } catch {
+    /* not critical: captions then follow the page as before */
+  }
+}
+chrome.runtime.onInstalled.addListener(() => void registerHook());
+chrome.runtime.onStartup.addListener(() => void registerHook());
+void registerHook();
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-pip') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
