@@ -31,7 +31,13 @@ async function fetchText(url: string): Promise<string | null> {
   }
 }
 
-export function attachPreciseDomCaptions(video: HTMLVideoElement, root: Element, onText: (text: string) => void): () => void {
+export function attachPreciseDomCaptions(
+  video: HTMLVideoElement,
+  root: Element,
+  onText: (text: string) => void,
+  /** Where the video is shown on the page (differs from the video's own box while it lives in the PiP window). */
+  area: () => DOMRect | null = () => video.getBoundingClientRect(),
+): () => void {
   let stopped = false;
   let domText = '';
   let domSince = performance.now();
@@ -41,13 +47,17 @@ export function attachPreciseDomCaptions(video: HTMLVideoElement, root: Element,
   const tried = new Set<string>();
   const candidates: Candidate[] = [];
 
-  const detachDom = attachDomCaptions(root, (text) => {
+  const detachDom = attachDomCaptions(
+    root,
+    (text) => {
     if (text !== domText) {
       domText = text;
       domSince = performance.now();
     }
     if (!adopted) onText(text);
-  });
+    },
+    { area, clock: () => video.currentTime },
+  );
 
   const scan = async () => {
     for (const e of performance.getEntriesByType('resource')) {

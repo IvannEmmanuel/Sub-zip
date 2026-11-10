@@ -2,7 +2,7 @@ import { sortCues, type Cue } from '../../lib/cues';
 
 export function getSubtitleTracks(video: HTMLVideoElement): TextTrack[] {
   return Array.from(video.textTracks).filter(
-    (t) => t.kind === 'subtitles' || t.kind === 'captions',
+    (t) => t.kind === 'subtitles' || t.kind === 'captions' || (t.kind === 'metadata' && (t.mode === 'showing' || !!t.label || !!t.language)), // some players mislabel theirs as metadata
   );
 }
 

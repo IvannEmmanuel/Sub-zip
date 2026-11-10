@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sub PiP",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Keep subtitles visible in Picture-in-Picture. Works with YouTube, HTML5 <track>, page captions and SRT/VTT files.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-DGUKQvH7.js"
+        "assets/index.ts-loader-FjPyeacM.js"
       ],
       "matches": [
         "<all_urls>"
@@ -57,7 +57,7 @@
       ],
       "resources": [
         "assets/srt-9tZ6zDCE.js",
-        "assets/index.ts-CuQNGnzq.js"
+        "assets/index.ts-Dd59aylC.js"
       ],
       "use_dynamic_url": false
     }

@@ -3,6 +3,9 @@
 Chrome extension that keeps subtitles visible in Picture-in-Picture (YouTube, HTML5 `<track>`, page captions, `.srt`/`.vtt` files). Needs Chrome/Edge 116+.
 
 ## Install (friends)
+**Easiest:** open the [Releases page](../../releases/latest), download `sub-pip-vX.Y.Z.zip`, extract it to a permanent folder, then in `chrome://extensions` turn on **Developer mode**, click **Load unpacked** and pick the extracted folder (no `dist` inside it, the zip *is* the extension). See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
+**Or from the source ZIP:**
 1. On GitHub click **Code → Download ZIP** and **extract it to a permanent folder** (Chrome reads from it every launch; don't delete it).
 2. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on **Developer mode**.
 3. Click **Load unpacked** and pick the **`dist`** folder inside the extracted folder.

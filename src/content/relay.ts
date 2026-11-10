@@ -14,6 +14,7 @@ import { watchNextEpisode } from './nextEpisode';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { hasDomCaptions } from './subtitleSources/domCaptions';
+import { overlayInfo } from './subtitleSources/overlayText';
 import { watchSiteSubs } from './subtitleSources/siteSubs';
 import type { Cue } from '../lib/cues';
 import { attachPreciseDomCaptions, preciseInfo } from './subtitleSources/siteCues';
@@ -637,7 +638,7 @@ export class RelaySession implements PipController {
 page text captions: ${preciseInfo.domText ? 'yes' : 'none now'}
 site subtitle file: ${site}
 caption canvas layer: ${this.usingSiteCues ? 'replaced by text from the page subtitle file' : this.layerSeen ? 'yes' : 'no'}
-libass/JASSUB file seen: ${this.siteCues ? this.siteCues.length + ' lines' : 'no'}
+tracks: ${Array.from(this.video.textTracks).map((t) => `${t.kind}/${t.mode}/${t.cues?.length ?? 0}`).join(', ') || 'none'}\nvisible text over video: ${overlayInfo.texts} seen, using "${overlayInfo.picked}"${overlayInfo.rejected.length ? ', skipped ' + overlayInfo.rejected.join(' | ') : ''}\nlibass/JASSUB file seen: ${this.siteCues ? this.siteCues.length + ' lines' : 'no'}
 frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
   }
 

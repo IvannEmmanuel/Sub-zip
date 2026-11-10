@@ -1,5 +1,7 @@
 // Reads captions that players render as DOM nodes (YouTube, Video.js, Plyr, JW Player, Shaka).
 
+import { createOverlayReader } from './overlayText';
+
 const LINE_SELECTORS = [
   '.caption-visual-line', // YouTube: one element per visual line
   '.vjs-text-track-cue',
@@ -76,19 +78,27 @@ function readCaptions(root: Element): string {
 /** True if the player root currently contains a recognised caption container. */
 export function hasDomCaptions(root: Element): boolean {
   return (
+    // Unknown players are handled by the on-screen text reader, so the page source is always worth trying.
+    true ||
     root.querySelector(
       [...LINE_SELECTORS, YT_SEGMENT, '.ytp-caption-window-container', '.vjs-text-track-display', '.plyr__captions', '.jw-captions', GENERIC].join(','),
     ) !== null
   );
 }
 
-export function attachDomCaptions(root: Element, onText: (text: string) => void): () => void {
+export function attachDomCaptions(
+  root: Element,
+  onText: (text: string) => void,
+  /** Where the video is on screen and its clock: enables the player-agnostic on-screen text reader. */
+  screen?: { area: () => DOMRect | null; clock: () => number },
+): () => void {
   let last = '';
   let scheduled = false;
+  const guess = screen ? createOverlayReader(screen.area, screen.clock) : null;
 
   const emit = () => {
     scheduled = false;
-    const text = readCaptions(root);
+    const text = readCaptions(root) || (guess ? guess() : '');
     if (text !== last) {
       last = text;
       onText(text);
@@ -102,10 +112,13 @@ export function attachDomCaptions(root: Element, onText: (text: string) => void)
 
   const observer = new MutationObserver(schedule);
   observer.observe(root, { childList: true, subtree: true, characterData: true });
+  // Captions can also appear without a DOM change we can see (CSS-only show/hide), and the reader looks at the screen.
+  const poll = guess ? window.setInterval(emit, 250) : 0;
   emit();
 
   return () => {
     observer.disconnect();
+    if (poll) window.clearInterval(poll);
     onText('');
   };
 }

@@ -272,7 +272,7 @@ export class PipSession implements PipController {
         this.detachSource = attachTextTrack(this.video, onText);
         break;
       case 'dom':
-        this.detachSource = attachPreciseDomCaptions(this.video, this.current.playerRoot, onText);
+        this.detachSource = attachPreciseDomCaptions(this.video, this.current.playerRoot, onText, () => this.current.placeholder.parentElement?.getBoundingClientRect() ?? null);
         break;
       case 'off':
         onText('');
