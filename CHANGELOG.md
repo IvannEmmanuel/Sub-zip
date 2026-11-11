@@ -2,6 +2,13 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## Unreleased
+- Study tools in the PiP window: replay the current line (R), loop it (O), hover a word to pause and look it up (W), study mode that hides lines until you ask (E / X), dim the picture while nobody talks (Q). All under the ••• button too.
+- Save words with the star in the word card (with the line they came from); export them as CSV from the popup's Tools tab.
+- Save the lines shown so far as an .srt from the history panel; words in the history are clickable for lookup.
+- Long videos offer "Continue from m:ss" when you come back (stored on this computer only).
+- Fixed: the word lookup trimmed the letters p and s from the ends of the clicked word (a broken pattern), so words like "plans" were looked up as "lan".
+
 ## 0.2.1
 - Subtitles on more sites: if the captions are drawn by the page around the player frame, they are now read from there.
 - If a site loads one subtitle file and its captions cannot be read as text, that file is used (the file matching your language is chosen when there are several; thumbnail tracks are ignored).

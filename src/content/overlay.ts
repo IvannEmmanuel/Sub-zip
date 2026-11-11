@@ -5,6 +5,8 @@ import type { Settings, TranslateMode } from '../lib/settings';
 import { iconSvg, type IconName } from './icons';
 import { defineWord, lookupProblem } from './lookup';
 import { loadBitmap, thumbAt, type ThumbCue } from './thumbnails';
+import { downloadText, loadWords, safeName, saveWord, removeWord, toSrt, type SavedWord } from '../lib/study';
+import { watchResume } from './resume';
 
 const CSS = /* css */ `
 :root { color-scheme: dark; }
@@ -53,7 +55,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   background: rgba(17,24,39,.97); border: 1px solid #1f2937; box-shadow: 0 8px 24px rgba(0,0,0,.5);
   color: #E5E7EB; font-size: 13px; line-height: 1.45; }
 .dict[hidden], .hist[hidden] { display: none; }
-.dict h3 { margin: 0; padding-right: 28px; font-size: 16px; color: #fff; }
+.dict h3 { margin: 0; padding-right: 60px; font-size: 16px; color: #fff; }
 .dict .tr1 { margin: 2px 0 4px; color: #93C5FD; font-size: 14px; }
 .dict .pos { margin-top: 6px; color: #9CA3AF; font-style: italic; }
 .dict ul { margin: 2px 0 0; padding-left: 18px; }
@@ -119,7 +121,65 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .btn.primary:hover { background: #1D4ED8; }
 .sep { flex: none; width: 1px; height: 20px; margin: 0 4px; background: rgba(255,255,255,.18); }
 @container (max-width: 440px) { .btn.optional, .sep.optional { display: none; } }
-@media (prefers-reduced-motion: reduce) { .subs, .bar, .btn, .volume, .skip, .stage > canvas.layer { transition: none; } }
+
+/* Study tools: dim while nobody talks, hidden lines, short messages, the "more" panel, the star in the word card. */
+.stage > video, .stage > canvas.surface { transition: opacity .6s ease; }
+.stage.quiet > video, .stage.quiet > canvas.surface { opacity: .22; }
+.stage.study:not(.revealed) .subs { visibility: hidden; }
+.reveal { position: absolute; left: 50%; z-index: 3; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 14px; border: 1px solid rgba(255,255,255,.28); border-radius: 17px; background: rgba(11,15,23,.88);
+  color: #fff; font: 600 13px/1 system-ui, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
+.stage.pos-bottom .reveal { bottom: calc(var(--sub-offset) + 4px); }
+.stage.pos-top .reveal { top: calc(var(--sub-offset) + 4px); }
+.stage.pos-bottom.controls .reveal { bottom: calc(var(--bar-h) + var(--sub-offset) + 4px); }
+.reveal[hidden] { display: none; }
+.reveal:hover { background: #2563EB; border-color: #2563EB; }
+.reveal:focus-visible { outline: 2px solid #60A5FA; outline-offset: 2px; }
+.toast { position: absolute; left: 50%; top: 12px; z-index: 7; max-width: 90%; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px;
+  background: rgba(11,15,23,.92); border: 1px solid rgba(255,255,255,.2); color: #fff; font-size: 12px; line-height: 1.3;
+  display: flex; align-items: center; gap: 10px; }
+.toast[hidden] { display: none; }
+.toast button { height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: #2563EB; color: #fff; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+.toast button:hover { background: #1D4ED8; }
+.more { position: absolute; right: 8px; bottom: calc(var(--bar-h) - 4px); z-index: 6; width: min(94%, 340px); max-height: calc(100% - var(--bar-h) - 12px); overflow: auto;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 12px; background: rgba(17,24,39,.98); border: 1px solid #1f2937; box-shadow: 0 8px 28px rgba(0,0,0,.55); }
+.more[hidden] { display: none; }
+.mh { margin: 8px 6px 2px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9CA3AF; }
+.mh:first-child { margin-top: 2px; }
+.opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: #E5E7EB; font: inherit; text-align: left; cursor: pointer; }
+.opt:hover { background: rgba(255,255,255,.09); }
+.opt:focus-visible, .sq:focus-visible { outline: 2px solid #60A5FA; outline-offset: 1px; }
+.opt > svg { flex: none; color: #9CA3AF; }
+.opt[aria-checked="true"] > svg { color: #93C5FD; }
+.ot { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.ot b { font-size: 13px; font-weight: 600; color: #fff; }
+.ot small { font-size: 11px; line-height: 1.3; color: #9CA3AF; }
+.opt kbd { flex: none; min-width: 20px; padding: 1px 5px; border: 1px solid #374151; border-radius: 4px; background: #111827; color: #9CA3AF;
+  font: 600 11px/1.5 ui-monospace, Consolas, monospace; text-align: center; }
+.tg { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: #374151; transition: background-color .15s ease; }
+.tg::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s ease; }
+.opt[aria-checked="true"] .tg { background: #2563EB; }
+.opt[aria-checked="true"] .tg::after { transform: translateX(14px); }
+.step { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; padding: 4px 8px; font-size: 13px; font-weight: 600; color: #fff; }
+.ctl { display: flex; align-items: center; gap: 6px; }
+.val { min-width: 46px; text-align: center; font-size: 13px; font-weight: 600; color: #E5E7EB; font-variant-numeric: tabular-nums; }
+.sq { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 30px; padding: 0; border: 1px solid #374151; border-radius: 7px;
+  background: #111827; color: #E5E7EB; cursor: pointer; }
+.sq:hover { background: #1f2937; }
+.chip { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent;
+  color: #E5E7EB; font: 500 12px/1.2 system-ui, "Segoe UI", Roboto, sans-serif; text-align: left; cursor: pointer; }
+.chip:hover { background: rgba(255,255,255,.12); }
+.chip:focus-visible { outline: 2px solid #60A5FA; outline-offset: 1px; }
+.chip svg { flex: none; }
+.dict .star { right: 34px; }
+.dict .star[aria-pressed="true"] { color: #FBBF24; }
+.dict .star[aria-pressed="true"] svg { fill: currentColor; }
+.dict .src { margin-top: 6px; font-size: 11px; color: #9CA3AF; }
+.hist-row .w:hover { background: rgba(96,165,250,.5); }
+.hist-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hist-bar .chip { flex: none; }
+@media (prefers-reduced-motion: reduce) { .subs, .bar, .btn, .volume, .skip, .stage > canvas.layer, .stage > video, .stage > canvas.surface { transition: none; } }
 `;
 
 /** What the overlay needs from a video: a real <video>, or a stand-in for one that lives in another frame. */
@@ -366,6 +426,7 @@ export function buildOverlay(
   };
 
   addButton({ id: 'play', label: 'Play / pause', icon: 'pause', primary: true }, togglePlay);
+  addButton({ id: 'replay', label: 'Replay this line (R)', icon: 'replay' }, () => replayLine());
   addButton({ id: 'back', label: 'Back 10 seconds', icon: 'back', optional: true }, () => seek(-10));
   addButton({ id: 'fwd', label: 'Forward 10 seconds', icon: 'forward', optional: true }, () => seek(10));
   const nextBtn = addButton({ id: 'next', label: 'Next episode', icon: 'skip' }, () => handlers.next());
@@ -396,27 +457,90 @@ export function buildOverlay(
   addButton({ id: 'translate', label: 'Translation', icon: 'languages', optional: true }, () => cycleTranslate()).setAttribute('aria-pressed', 'false');
   addButton({ id: 'history', label: 'Subtitle history (H)', icon: 'history', optional: true }, () => toggleHistory());
   addSep();
-  addButton({ id: 'smaller', label: 'Smaller subtitles', icon: 'smaller', optional: true }, () =>
-    handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }),
-  );
-  addButton({ id: 'larger', label: 'Larger subtitles', icon: 'larger', optional: true }, () =>
-    handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }),
-  );
-  addButton({ id: 'up', label: 'Move subtitles up', icon: 'up', optional: true }, () =>
-    handlers.update(
-      settings.position === 'bottom'
-        ? { offset: Math.min(40, settings.offset + 2) }
-        : { offset: Math.max(0, settings.offset - 2) },
-    ),
-  );
-  addButton({ id: 'down', label: 'Move subtitles down', icon: 'down', optional: true }, () =>
-    handlers.update(
-      settings.position === 'bottom'
-        ? { offset: Math.max(0, settings.offset - 2) }
-        : { offset: Math.min(40, settings.offset + 2) },
-    ),
-  );
+  addButton({ id: 'more', label: 'Tools: study options and subtitle settings (G)', icon: 'sliders' }, () => toggleMore()).setAttribute('aria-expanded', 'false');
   addButton({ id: 'close', label: 'Close Picture-in-Picture', icon: 'close' }, handlers.close);
+
+  // The tools panel: grouped, every option named in plain words with what it does and its key.
+  const more = doc.createElement('div');
+  more.className = 'more';
+  more.hidden = true;
+  more.setAttribute('role', 'group');
+  more.setAttribute('aria-label', 'Tools');
+  const chips = new Map<string, HTMLButtonElement>();
+  const group = (title: string) => {
+    const h = doc.createElement('div');
+    h.className = 'mh';
+    h.textContent = title;
+    more.append(h);
+  };
+  const addSwitch = (id: string, title: string, desc: string, key: string, icon: IconName, onClick: () => void) => {
+    const c = doc.createElement('button');
+    c.type = 'button';
+    c.className = 'opt';
+    c.setAttribute('role', 'switch');
+    c.setAttribute('aria-checked', 'false');
+    c.innerHTML = `${iconSvg(icon, 18)}<span class="ot"><b></b><small></small></span><kbd></kbd><i class="tg" aria-hidden="true"></i>`;
+    (c.querySelector('b') as HTMLElement).textContent = title;
+    (c.querySelector('small') as HTMLElement).textContent = desc;
+    (c.querySelector('kbd') as HTMLElement).textContent = key;
+    c.addEventListener('click', onClick);
+    chips.set(id, c);
+    more.append(c);
+  };
+  const addStepper = (title: string, parts: { label: string; icon: IconName; run: () => void }[], value?: HTMLElement) => {
+    const r = doc.createElement('div');
+    r.className = 'step';
+    const t = doc.createElement('span');
+    t.textContent = title;
+    r.append(t);
+    const ctl = doc.createElement('div');
+    ctl.className = 'ctl';
+    parts.forEach((p, i) => {
+      const b = doc.createElement('button');
+      b.type = 'button';
+      b.className = 'sq';
+      b.setAttribute('aria-label', p.label);
+      b.title = p.label;
+      b.innerHTML = iconSvg(p.icon, 16);
+      b.addEventListener('click', p.run);
+      if (i === 1 && value) ctl.append(value);
+      ctl.append(b);
+    });
+    r.append(ctl);
+    more.append(r);
+  };
+  const nudge = (up: boolean) => {
+    const d = up === (settings.position === 'bottom') ? 2 : -2;
+    handlers.update({ offset: Math.min(40, Math.max(0, settings.offset + d)) });
+  };
+  const sizeLabel = doc.createElement('output');
+  sizeLabel.className = 'val';
+
+  group('Study');
+  addSwitch('loop', 'Loop this line', 'Repeat the current line until you stop it', 'O', 'loop', () => toggleLoop());
+  addSwitch('hover', 'Hover to look up', 'Rest the pointer on a word to see its meaning', 'W', 'search', () => handlers.update({ hoverLookup: !settings.hoverLookup }));
+  addSwitch('study', 'Study mode', 'Hide each line until you ask for it', 'E', 'eyeOff', () => handlers.update({ studyMode: !settings.studyMode }));
+  addSwitch('dim', 'Dim when silent', 'Fade the picture while nobody is talking', 'Q', 'moon', () => handlers.update({ autoDim: !settings.autoDim }));
+  group('Subtitle text');
+  addStepper(
+    'Size',
+    [
+      { label: 'Smaller text', icon: 'smaller', run: () => handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }) },
+      { label: 'Larger text', icon: 'larger', run: () => handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }) },
+    ],
+    sizeLabel,
+  );
+  addStepper('Position', [
+    { label: 'Move text up', icon: 'up', run: () => nudge(true) },
+    { label: 'Move text down', icon: 'down', run: () => nudge(false) },
+  ]);
+  group('Save');
+  const saveBtn = doc.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'opt';
+  saveBtn.innerHTML = `${iconSvg('download', 18)}<span class="ot"><b>Save lines as .srt</b><small>Download the lines shown so far as a subtitle file</small></span>`;
+  saveBtn.addEventListener('click', () => saveTranscript());
+  more.append(saveBtn);
 
   const skipBtn = doc.createElement('button');
   skipBtn.type = 'button';
@@ -442,7 +566,16 @@ export function buildOverlay(
   renderDiag = () => {
     if (!diag.hidden) diag.textContent = diagText + (thumbNote ? `\n${thumbNote}` : '');
   };
-  stage.append(subs, hist, dict, skipBtn, diag, bar);
+  const revealBtn = doc.createElement('button');
+  revealBtn.type = 'button';
+  revealBtn.className = 'reveal';
+  revealBtn.hidden = true;
+  revealBtn.innerHTML = `${iconSvg('eye', 16)}<span>Show line (X)</span>`;
+  const toast = doc.createElement('div');
+  toast.className = 'toast';
+  toast.hidden = true;
+  toast.setAttribute('role', 'status');
+  stage.append(subs, revealBtn, hist, dict, skipBtn, diag, toast, more, bar);
   stage.prepend(surfaceEl);
   if (layer) surfaceEl.after(layer);
   doc.body.append(stage);
@@ -501,7 +634,8 @@ export function buildOverlay(
     stage.classList.remove('hide-cursor');
     win.clearTimeout(idleTimer);
     idleTimer = win.setTimeout(() => {
-      if (video.paused || bar.matches(':focus-within')) return;
+      if (video.paused || bar.matches(':focus-within') || more.matches(':focus-within')) return;
+      setMore(false);
       stage.classList.remove('controls');
       stage.classList.add('hide-cursor');
     }, IDLE_MS);
@@ -528,6 +662,13 @@ export function buildOverlay(
       case 'j': seek(-10); break;
       case 'l': seek(10); break;
       case 'h': toggleHistory(); break;
+      case 'r': replayLine(); break;
+      case 'o': toggleLoop(); break;
+      case 'w': handlers.update({ hoverLookup: !settings.hoverLookup }); break;
+      case 'e': handlers.update({ studyMode: !settings.studyMode }); break;
+      case 'q': handlers.update({ autoDim: !settings.autoDim }); break;
+      case 'x': reveal(); break;
+      case 'g': toggleMore(); break;
       case 'd':
         diag.hidden = !diag.hidden;
         renderDiag();
@@ -542,9 +683,10 @@ export function buildOverlay(
       case '-':
       case '_': handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }); break;
       case 'Escape':
-        if (dict.hidden && hist.hidden) return;
+        if (dict.hidden && hist.hidden && more.hidden) return;
         closeDict();
         hist.hidden = true;
+        setMore(false);
         break;
       case 'ArrowLeft': seek(e.shiftKey ? -10 : -5); break;
       case 'ArrowRight': seek(e.shiftKey ? 10 : 5); break;
@@ -567,6 +709,15 @@ export function buildOverlay(
     stage.style.setProperty('--layer-y', `${shift}%`);
     stage.classList.toggle('pos-bottom', next.position === 'bottom');
     stage.classList.toggle('pos-top', next.position === 'top');
+    stage.classList.toggle('study', next.studyMode);
+    sizeLabel.textContent = `${Math.round(next.scale * 100)}%`;
+    chips.get('hover')?.setAttribute('aria-checked', String(next.hoverLookup));
+    chips.get('study')?.setAttribute('aria-checked', String(next.studyMode));
+    chips.get('dim')?.setAttribute('aria-checked', String(next.autoDim));
+    if (!next.hoverLookup) cancelHover();
+    if (!next.studyMode) revealed = false;
+    syncReveal();
+    tickDim();
     const tr = buttons.get('translate');
     if (tr) {
       tr.setAttribute('aria-pressed', String(next.translateMode !== 'off'));
@@ -574,18 +725,12 @@ export function buildOverlay(
       tr.setAttribute('aria-label', tr.title);
     }
   };
-  applySettings(initial);
-  syncPlayState();
-  syncMute();
-  syncProgress();
-  showControls();
-
   // --- subtitles, word lookup, history -------------------------------------------------------
   const fillWords = (el: HTMLElement, text: string) => {
     // Every word becomes a click target for the dictionary. Intl.Segmenter also splits Japanese / Chinese.
     const parts = segmenter
       ? Array.from(segmenter.segment(text), (s) => ({ text: s.segment, word: Boolean(s.isWordLike) }))
-      : text.split(/(s+)/).map((t) => ({ text: t, word: /S/.test(t) }));
+      : text.split(/(\s+)/).map((t) => ({ text: t, word: /\S/.test(t) }));
     for (const part of parts) {
       if (!part.word) {
         el.append(doc.createTextNode(part.text));
@@ -598,6 +743,104 @@ export function buildOverlay(
     }
   };
 
+  // --- study tools ---------------------------------------------------------------------------
+  const lastEntry = (): HistoryEntry | undefined => {
+    const e = handlers.history();
+    return e[e.length - 1];
+  };
+  const histKey = () => {
+    const e = handlers.history();
+    return `${e.length}|${e[e.length - 1]?.text ?? ''}`;
+  };
+  let toastTimer = 0;
+  const flash = (text: string, action?: { label: string; run: () => void }, ms = 2200) => {
+    toast.replaceChildren(doc.createTextNode(text));
+    if (action) {
+      const b = doc.createElement('button');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.addEventListener('click', () => {
+        toast.hidden = true;
+        action.run();
+      });
+      toast.append(b);
+    }
+    toast.hidden = false;
+    win.clearTimeout(toastTimer);
+    toastTimer = win.setTimeout(() => (toast.hidden = true), ms);
+  };
+
+  // Which line is on screen: counts up whenever a NEW line appears (translation arriving does not count).
+  let lineSeq = 0;
+  let lineOn = false;
+  let lastHistKey = '';
+  let lastLineAt = 0;
+  let revealed = false;
+  let loop: { text: string; start: number; seen: boolean } | null = null;
+
+  const syncReveal = () => {
+    revealBtn.hidden = !(settings.studyMode && lineOn && !revealed);
+    stage.classList.toggle('revealed', revealed);
+  };
+  const reveal = () => {
+    if (!settings.studyMode || !lineOn) return;
+    revealed = true;
+    syncReveal();
+  };
+  revealBtn.addEventListener('click', reveal);
+
+  const tickDim = () => {
+    const idle = performance.now() - lastLineAt;
+    const quiet = settings.autoDim && !video.paused && lastLineAt > 0 && !lineOn && idle > 4000 && idle < 120_000 && !stage.classList.contains('controls');
+    stage.classList.toggle('quiet', quiet);
+  };
+  const dimTimer = win.setInterval(tickDim, 500);
+
+  const replayLine = () => {
+    const e = lastEntry();
+    if (!e) return flash('No line to replay yet');
+    closeDict();
+    video.currentTime = Math.max(0, e.time - 0.3);
+    void video.play().catch(() => {});
+    flash('Replaying the line');
+  };
+  const toggleLoop = () => {
+    if (loop) {
+      loop = null;
+      flash('Loop off');
+    } else {
+      const e = lastEntry();
+      if (!e) return flash('No line to loop yet');
+      loop = { text: e.text, start: Math.max(0, e.time - 0.3), seen: lineOn };
+      closeDict();
+      flash('Looping this line. Press O to stop');
+    }
+    chips.get('loop')?.setAttribute('aria-checked', String(Boolean(loop)));
+  };
+  const onLineChange = (on: boolean) => {
+    const key = histKey();
+    const fresh = on && (!lineOn || key !== lastHistKey);
+    lastHistKey = key;
+    lineOn = on;
+    if (fresh) {
+      lineSeq++;
+      revealed = false;
+    }
+    if (on) lastLineAt = performance.now();
+    syncReveal();
+    tickDim();
+    if (loop) {
+      const e = lastEntry();
+      const mine = on && e?.text === loop.text;
+      if (mine) loop.seen = true;
+      else if (loop.seen && video.currentTime > loop.start + 0.5) {
+        loop.seen = false;
+        video.currentTime = loop.start;
+        void video.play().catch(() => {});
+      }
+    }
+  };
+
   const setLines = (lines: Line[]) => {
     subs.replaceChildren(
       ...lines.map((line) => {
@@ -607,7 +850,27 @@ export function buildOverlay(
         return span;
       }),
     );
+    onLineChange(lines.length > 0);
   };
+
+  const saveTranscript = () => {
+    const entries = handlers.history();
+    if (!entries.length) return flash('No lines yet to save');
+    const name = `${safeName(document.title, 'subtitles')}.srt`;
+    downloadText(doc, name, toSrt(entries, settings.translateMode !== 'off'), 'application/x-subrip');
+    flash(`Saved ${entries.length} lines as ${name}`);
+  };
+
+  const setMore = (open: boolean) => {
+    more.hidden = !open;
+    buttons.get('more')?.setAttribute('aria-expanded', String(open));
+  };
+  const toggleMore = () => setMore(more.hidden === true);
+
+  // Pick up where the viewer stopped last time (long videos only).
+  const stopResume = watchResume(video, (time, go) =>
+    flash(`Continue from ${fmtTime(time)}?`, { label: 'Continue', run: go }, 12_000),
+  );
 
   let pausedByDict = false;
   let lookupToken = 0;
@@ -625,8 +888,24 @@ export function buildOverlay(
     el.textContent = text;
     return el;
   };
-  const openDict = async (raw: string) => {
-    const word = raw.replace(/^[p{P}p{S}s]+|[p{P}p{S}s]+$/gu, '');
+  // Words the viewer saved (a star in the word card). Loaded once; kept in step with what this window changes.
+  const savedWords = new Set<string>();
+  void loadWords().then((all) => all.forEach((w) => savedWords.add(w.word.toLowerCase())));
+
+  let hoverOpened = false;
+  let hoverTimer = 0;
+  let hoverHideTimer = 0;
+  const cancelHover = () => {
+    win.clearTimeout(hoverTimer);
+    win.clearTimeout(hoverHideTimer);
+    if (hoverOpened) {
+      hoverOpened = false;
+      closeDict();
+    }
+  };
+
+  const openDict = async (raw: string, context = '') => {
+    const word = raw.replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, '');
     if (!word) return;
     const token = ++lookupToken;
     if (!video.paused) {
@@ -638,31 +917,111 @@ export function buildOverlay(
     close.className = 'btn x';
     close.setAttribute('aria-label', 'Close lookup');
     close.innerHTML = iconSvg('close', 16);
-    close.addEventListener('click', closeDict);
+    close.addEventListener('click', () => {
+      hoverOpened = false;
+      closeDict();
+    });
     dict.replaceChildren(close, textEl('h3', '', word), textEl('p', 'muted', 'Looking up…'));
     dict.hidden = false;
 
     const result = await defineWord(word, settings.translateTo);
     if (token !== lookupToken) return; // closed, or another word was clicked meanwhile
     const body: HTMLElement[] = [close, textEl('h3', '', word)];
+    const entry: SavedWord = {
+      word,
+      translation: '',
+      meaning: '',
+      sentence: context,
+      source: document.title,
+      url: location.href.split('#')[0] ?? location.href,
+      time: video.currentTime,
+      savedAt: Date.now(),
+    };
     if (!result) body.push(textEl('p', 'muted', lookupProblem() || 'Could not look this up. Check your connection.'));
     else {
-      if (result.translation && result.translation.toLowerCase() !== word.toLowerCase())
+      if (result.translation && result.translation.toLowerCase() !== word.toLowerCase()) {
         body.push(textEl('p', 'tr1', result.translation));
+        entry.translation = result.translation;
+      }
       for (const m of result.meanings) {
         if (m.pos) body.push(textEl('div', 'pos', m.pos));
         const ul = doc.createElement('ul');
         for (const d of m.defs) ul.append(textEl('li', '', d));
         body.push(ul);
       }
+      entry.meaning = result.meanings
+        .slice(0, 3)
+        .map((m) => `${m.pos ? `${m.pos}: ` : ''}${m.defs.slice(0, 2).join('; ')}`)
+        .join(' | ');
       if (body.length === 2) body.push(textEl('p', 'muted', 'No result for this word.'));
     }
+    if (context) body.push(textEl('div', 'src', context));
+    // Star: keep the word (with the line it was heard in) for later; Tools tab of the popup exports them.
+    const star = doc.createElement('button');
+    star.type = 'button';
+    star.className = 'btn x star';
+    star.innerHTML = iconSvg('star', 16);
+    const paintStar = () => {
+      const on = savedWords.has(word.toLowerCase());
+      star.setAttribute('aria-pressed', String(on));
+      star.setAttribute('aria-label', on ? 'Remove from saved words' : 'Save this word');
+      star.title = star.getAttribute('aria-label') ?? '';
+    };
+    paintStar();
+    star.addEventListener('click', () => {
+      hoverOpened = false; // the viewer is working with this card: do not close it behind their back
+      if (savedWords.has(word.toLowerCase())) {
+        savedWords.delete(word.toLowerCase());
+        void removeWord(word);
+        flash('Removed from saved words');
+      } else {
+        savedWords.add(word.toLowerCase());
+        void saveWord(entry);
+        flash('Saved. Export from the extension popup, Tools tab');
+      }
+      paintStar();
+    });
+    body.splice(1, 0, star);
     dict.replaceChildren(...body);
   };
   subs.addEventListener('click', (e) => {
     const target = (e.target as HTMLElement | null)?.closest?.('.w');
-    if (target) void openDict(target.textContent ?? '');
+    if (!target) return;
+    win.clearTimeout(hoverTimer);
+    hoverOpened = false; // a click keeps the card open until it is closed
+    const cue = target.closest('.cue:not(.tr)') ?? target.closest('.cue');
+    void openDict(target.textContent ?? '', cue?.textContent ?? '');
   });
+
+  // Hover lookup: rest the pointer on a word and the video pauses with its meaning; move away and it carries on.
+  const scheduleHoverClose = () => {
+    win.clearTimeout(hoverHideTimer);
+    if (!hoverOpened) return;
+    hoverHideTimer = win.setTimeout(() => {
+      if (!hoverOpened) return;
+      hoverOpened = false;
+      closeDict();
+    }, 500);
+  };
+  subs.addEventListener('pointerover', (e) => {
+    if (!settings.hoverLookup) return;
+    const w = (e.target as HTMLElement | null)?.closest?.('.w');
+    if (!w) return;
+    win.clearTimeout(hoverHideTimer);
+    win.clearTimeout(hoverTimer);
+    hoverTimer = win.setTimeout(() => {
+      const cue = w.closest('.cue:not(.tr)') ?? w.closest('.cue');
+      hoverOpened = true;
+      void openDict(w.textContent ?? '', cue?.textContent ?? '');
+    }, 450);
+  });
+  subs.addEventListener('pointerout', (e) => {
+    if (!(e.target as HTMLElement | null)?.closest?.('.w')) return;
+    win.clearTimeout(hoverTimer);
+    scheduleHoverClose();
+  });
+  dict.addEventListener('pointerenter', () => win.clearTimeout(hoverHideTimer));
+  dict.addEventListener('pointerleave', scheduleHoverClose);
 
   let histSig = '';
   const renderHistory = () => {
@@ -679,16 +1038,26 @@ export function buildOverlay(
         b.type = 'button';
         b.className = 'hist-row';
         const text = doc.createElement('span');
-        text.append(doc.createTextNode(entry.text));
+        fillWords(text, entry.text); // click a word to look it up, click elsewhere on the row to jump there
         if (settings.translateMode !== 'off' && entry.translated) text.append(textEl('span', 'tr', entry.translated));
         b.append(textEl('time', '', fmtTime(entry.time)), text);
-        b.addEventListener('click', () => handlers.seekTo(Math.max(0, entry.time - 0.5)));
+        b.addEventListener('click', (e) => {
+          const w = (e.target as HTMLElement | null)?.closest?.('.w');
+          if (w) void openDict(w.textContent ?? '', entry.text);
+          else handlers.seekTo(Math.max(0, entry.time - 0.5));
+        });
         return b;
       });
-    hist.replaceChildren(
-      textEl('h3', '', 'Subtitle history — click a line to jump there'),
-      ...(rows.length ? rows : [textEl('div', 'empty', 'Nothing yet. Lines appear here as they are shown.')]),
-    );
+    const head = doc.createElement('div');
+    head.className = 'hist-bar';
+    const save = doc.createElement('button');
+    save.type = 'button';
+    save.className = 'chip';
+    save.innerHTML = `${iconSvg('download', 16)}<span>.srt</span>`;
+    save.title = 'Save these lines as a subtitle file';
+    save.addEventListener('click', saveTranscript);
+    head.append(textEl('h3', '', 'History: click a line to jump, a word to look it up'), save);
+    hist.replaceChildren(head, ...(rows.length ? rows : [textEl('div', 'empty', 'Nothing yet. Lines appear here as they are shown.')]));
   };
   let histTimer = 0;
   const toggleHistory = () => {
@@ -704,6 +1073,13 @@ export function buildOverlay(
     const next = MODES[(MODES.indexOf(settings.translateMode) + 1) % MODES.length] ?? 'off';
     handlers.update({ translateMode: next });
   };
+
+  // Everything above is defined: now the first paint.
+  applySettings(initial);
+  syncPlayState();
+  syncMute();
+  syncProgress();
+  showControls();
 
   return {
     stage,
@@ -721,7 +1097,12 @@ export function buildOverlay(
     applySettings,
     destroy() {
       win.clearTimeout(idleTimer);
+      win.clearTimeout(toastTimer);
+      win.clearTimeout(hoverTimer);
+      win.clearTimeout(hoverHideTimer);
       win.clearInterval(histTimer);
+      win.clearInterval(dimTimer);
+        stopResume();
       video.removeEventListener('play', syncPlayState);
       video.removeEventListener('pause', syncPlayState);
       video.removeEventListener('volumechange', syncMute);

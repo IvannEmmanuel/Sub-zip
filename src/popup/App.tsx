@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { FileText, Languages, Play, PictureInPicture2, SlidersHorizontal, X } from 'lucide-preact';
+import { Download, FileText, Languages, Play, PictureInPicture2, SlidersHorizontal, Trash2, X } from 'lucide-preact';
 import { sortCues } from '../lib/cues';
 import {
   ensureContentScript,
@@ -12,6 +12,7 @@ import {
 } from '../lib/messaging';
 import { DEFAULT_SETTINGS, LANGUAGES, loadSettings, saveSettings, type Settings } from '../lib/settings';
 import { parseSubtitles } from '../lib/srt';
+import { clearWords, downloadText, loadWords, removeWord, wordsToCsv, type SavedWord } from '../lib/study';
 import { Preview } from './components/Preview';
 import { Segmented } from './components/Segmented';
 import { Slider } from './components/Slider';
@@ -70,6 +71,10 @@ export function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const pipOpenNow = status?.pipOpen ?? false;
   const [isBrave, setIsBrave] = useState(false);
+  const [words, setWords] = useState<SavedWord[]>([]);
+  useEffect(() => {
+    if (tab === 'tools') void loadWords().then(setWords);
+  }, [tab]);
   useEffect(() => {
     const brave = (navigator as Navigator & { brave?: { isBrave(): Promise<boolean> } }).brave;
     void brave?.isBrave().then(setIsBrave, () => {});
@@ -278,6 +283,80 @@ export function App() {
                 in the PiP window, to Google Translate (and dictionaryapi.dev for English words). Nothing is sent while it is Off
                 and you don’t click a word.
               </p>
+            </section>
+
+            <section aria-label="Learning tools" class="flex flex-col border-t border-line pt-2">
+              <h2 class="section-label mb-1">Learning</h2>
+              <Switch
+                label="Hover a word to look it up"
+                hint="Rest the pointer on a subtitle word: the video pauses and shows its meaning (W in the PiP window)"
+                checked={settings.hoverLookup}
+                onChange={(hoverLookup) => updateSettings({ hoverLookup })}
+              />
+              <Switch
+                label="Study mode"
+                hint="Hide each line until you press X or click “Show line” (E in the PiP window)"
+                checked={settings.studyMode}
+                onChange={(studyMode) => updateSettings({ studyMode })}
+              />
+              <Switch
+                label="Dim the picture when nobody talks"
+                hint="Fades during silence, returns with the next line (Q in the PiP window)"
+                checked={settings.autoDim}
+                onChange={(autoDim) => updateSettings({ autoDim })}
+              />
+              <p class="mt-1 text-[11px] leading-relaxed text-mute">
+                In the PiP window: R replays the line, O loops it, G opens more tools.
+              </p>
+            </section>
+
+            <section aria-label="Saved words" class="flex flex-col gap-2 border-t border-line pt-3">
+              <div class="flex items-baseline justify-between">
+                <h2 class="section-label">Saved words</h2>
+                <span class="text-[11px] text-mute">{words.length} saved</span>
+              </div>
+              {words.length === 0 ? (
+                <p class="text-xs text-mute">Click the star in a word’s card (in the PiP window) to keep it here, with the line it came from.</p>
+              ) : (
+                <>
+                  <ul class="flex flex-col gap-0.5">
+                    {words
+                      .slice()
+                      .reverse()
+                      .slice(0, 6)
+                      .map((w) => (
+                        <li key={w.word} class="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-line">
+                          <span class="min-w-0 flex-1 truncate">
+                            <span class="font-semibold text-ink">{w.word}</span>
+                            {w.translation && <span class="text-primary-soft"> · {w.translation}</span>}
+                          </span>
+                          <button
+                            type="button"
+                            class="focus-ring shrink-0 cursor-pointer rounded p-1 text-mute hover:text-ink"
+                            aria-label={`Remove ${w.word}`}
+                            onClick={() => void removeWord(w.word).then(setWords)}
+                          >
+                            <X size={14} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      class="btn-ghost flex-1"
+                      onClick={() => downloadText(document, 'sub-pip-words.csv', wordsToCsv(words), 'text/csv')}
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      Download CSV
+                    </button>
+                    <button type="button" class="btn-ghost" onClick={() => void clearWords().then(() => setWords([]))} aria-label="Delete all saved words">
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <p class="text-[11px] leading-relaxed text-mute">The CSV opens in Excel and imports into Anki (word on the front, the rest on the back).</p>
+                </>
+              )}
             </section>
 
             <section aria-label="Automatic Picture-in-Picture" class="border-t border-line pt-2">

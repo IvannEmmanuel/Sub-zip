@@ -21,6 +21,12 @@ export interface Settings {
   translateTo: string;
   /** Open Picture-in-Picture by itself when the tab with a playing video is left. */
   autoPip: boolean;
+  /** Pause and show the meaning when the pointer rests on a subtitle word (no click needed). */
+  hoverLookup: boolean;
+  /** Fade the picture while nobody is talking, bring it back with the next line. */
+  autoDim: boolean;
+  /** Hide each subtitle line until you ask for it (listen first, check after). */
+  studyMode: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +41,9 @@ export const DEFAULT_SETTINGS: Settings = {
   translateMode: 'off',
   translateTo: 'en',
   autoPip: false,
+  hoverLookup: true,
+  autoDim: false,
+  studyMode: false,
 };
 
 export const LANGUAGES: { code: string; name: string }[] = [
