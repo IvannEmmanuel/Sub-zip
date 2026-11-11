@@ -3,7 +3,8 @@ import { applySubtitleVars } from '../lib/subtitleStyle';
 import type { HistoryEntry, Line } from '../lib/messaging';
 import type { Settings, TranslateMode } from '../lib/settings';
 import { iconSvg, type IconName } from './icons';
-import { defineWord } from './lookup';
+import { defineWord, lookupProblem } from './lookup';
+import { loadBitmap, thumbAt, type ThumbCue } from './thumbnails';
 
 const CSS = /* css */ `
 :root { color-scheme: dark; }
@@ -81,7 +82,12 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   padding: 28px 10px 8px; background: linear-gradient(to top, rgba(11,15,23,.95) 35%, rgba(11,15,23,0));
   opacity: 0; pointer-events: none; transition: opacity .18s ease; }
 .stage.controls .bar { opacity: 1; pointer-events: auto; }
-.seekrow { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
+.seekrow { position: relative; display: flex; align-items: center; gap: 10px; padding: 0 4px; }
+.pv { position: absolute; bottom: 26px; left: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; transform: translateX(-50%); }
+.pv[hidden] { display: none; }
+.pv canvas { display: block; width: 160px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); background: #000; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+.pv canvas[hidden] { display: none; }
+.pv span { padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,.85); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; }
 .time { min-width: 0; color: #E5E7EB; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .seek { flex: 1; min-width: 0; height: 20px; margin: 0; background: transparent; cursor: pointer;
   -webkit-appearance: none; appearance: none; --p: 0%; }
@@ -153,6 +159,8 @@ export interface Overlay {
   setSkip(label: string | null): void;
   /** Shows or hides the Next-episode button. */
   setNext(available: boolean): void;
+  /** The site's seek-bar preview pictures (null = none). */
+  setThumbs(cues: ThumbCue[] | null): void;
   /** Text for the diagnostics box (press D in the window to show it). */
   setDiag(text: string): void;
   applySettings(settings: Settings): void;
@@ -227,6 +235,96 @@ export function buildOverlay(
   const timeLabel = doc.createElement('span');
   timeLabel.className = 'time';
   seekRow.append(seekBar, timeLabel);
+
+  // Hovering the seek bar shows the time, and the site's preview picture when it has one.
+  let thumbs: ThumbCue[] | null = null;
+  type Pic = { src: CanvasImageSource | null; state: string; w: number; h: number };
+  const images = new Map<string, Pic>();
+  let thumbNote = '';
+  let renderDiag: () => void = () => {};
+  let diagText = '';
+  const pv = doc.createElement('div');
+  pv.className = 'pv';
+  pv.hidden = true;
+  const pvCanvas = doc.createElement('canvas');
+  pvCanvas.width = 160;
+  pvCanvas.height = 90;
+  pvCanvas.hidden = true;
+  const pvTime = doc.createElement('span');
+  pv.append(pvCanvas, pvTime);
+  seekRow.append(pv);
+  let hoverTime = -1;
+  const drawThumb = () => {
+    const cue = thumbs && hoverTime >= 0 ? thumbAt(thumbs, hoverTime) : null;
+    const ctx = pvCanvas.getContext('2d');
+    if (!cue || !ctx) {
+      pvCanvas.hidden = true;
+      return;
+    }
+    let pic = images.get(cue.url);
+    if (!pic) {
+      const entry: Pic = { src: null, state: 'loading', w: 0, h: 0 };
+      pic = entry;
+      images.set(cue.url, entry);
+      const img = new Image();
+      img.addEventListener('load', () => {
+        entry.src = img;
+        entry.state = 'loaded';
+        entry.w = img.naturalWidth;
+        entry.h = img.naturalHeight;
+        drawThumb();
+      });
+      // The page's own rules (CSP, hotlink checks) may refuse the picture here: ask the background worker instead.
+      img.addEventListener('error', () => {
+        entry.state = 'page refused it, asking the background';
+        void loadBitmap(cue.url).then((bmp) => {
+          if (bmp) {
+            entry.src = bmp;
+            entry.w = bmp.width;
+            entry.h = bmp.height;
+            entry.state = 'loaded via background';
+          } else {
+            entry.state = 'could not be loaded';
+          }
+          drawThumb();
+        });
+        drawThumb();
+      });
+      img.src = cue.url;
+    }
+    thumbNote = `preview picture: ${pic.state} ${(cue.url.split('?')[0] ?? '').split('/').slice(-2).join('/')}${pic.w ? ` (${pic.w}x${pic.h})` : ''}`;
+    renderDiag();
+    if (!pic.src || !pic.w) return;
+    const img = pic.src;
+    const sw = cue.w || pic.w;
+    const sh = cue.h || pic.h;
+    pvCanvas.width = 160;
+    pvCanvas.height = Math.max(40, Math.round((160 * sh) / sw));
+    try {
+      ctx.drawImage(img, cue.x, cue.y, sw, sh, 0, 0, pvCanvas.width, pvCanvas.height);
+      pvCanvas.hidden = false;
+    } catch {
+      pvCanvas.hidden = true;
+    }
+  };
+  const onSeekHover = (e: PointerEvent) => {
+    const rect = seekBar.getBoundingClientRect();
+    const dur = video.duration;
+    if (!rect.width || !Number.isFinite(dur) || dur <= 0) return;
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    hoverTime = frac * dur;
+    pvTime.textContent = fmtTime(hoverTime);
+    pv.hidden = false;
+    const rowRect = seekRow.getBoundingClientRect();
+    const half = 82;
+    pv.style.left = `${Math.min(rowRect.width - half, Math.max(half, e.clientX - rowRect.left))}px`;
+    drawThumb();
+  };
+  seekBar.addEventListener('pointermove', onSeekHover);
+  seekBar.addEventListener('pointerleave', () => {
+    pv.hidden = true;
+    hoverTime = -1;
+  });
 
   const row = doc.createElement('div');
   row.className = 'row';
@@ -341,6 +439,9 @@ export function buildOverlay(
   const diag = doc.createElement('div');
   diag.className = 'diag';
   diag.hidden = true;
+  renderDiag = () => {
+    if (!diag.hidden) diag.textContent = diagText + (thumbNote ? `\n${thumbNote}` : '');
+  };
   stage.append(subs, hist, dict, skipBtn, diag, bar);
   stage.prepend(surfaceEl);
   if (layer) surfaceEl.after(layer);
@@ -427,7 +528,10 @@ export function buildOverlay(
       case 'j': seek(-10); break;
       case 'l': seek(10); break;
       case 'h': toggleHistory(); break;
-      case 'd': diag.hidden = !diag.hidden; break;
+      case 'd':
+        diag.hidden = !diag.hidden;
+        renderDiag();
+        break;
       case 's':
         if (skipBtn.hidden) return;
         handlers.skip();
@@ -541,7 +645,7 @@ export function buildOverlay(
     const result = await defineWord(word, settings.translateTo);
     if (token !== lookupToken) return; // closed, or another word was clicked meanwhile
     const body: HTMLElement[] = [close, textEl('h3', '', word)];
-    if (!result) body.push(textEl('p', 'muted', 'Could not look this up. Check your connection.'));
+    if (!result) body.push(textEl('p', 'muted', lookupProblem() || 'Could not look this up. Check your connection.'));
     else {
       if (result.translation && result.translation.toLowerCase() !== word.toLowerCase())
         body.push(textEl('p', 'tr1', result.translation));
@@ -606,8 +710,13 @@ export function buildOverlay(
     setLines,
     setSkip,
     setNext,
+    setThumbs: (cues) => {
+      thumbs = cues && cues.length ? cues : null;
+      if (!pv.hidden) drawThumb();
+    },
     setDiag: (text) => {
-      if (!diag.hidden) diag.textContent = text;
+      diagText = text;
+      renderDiag();
     },
     applySettings,
     destroy() {

@@ -3,6 +3,7 @@ import type { HistoryEntry, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
 import { watchNextEpisode } from './nextEpisode';
+import { watchThumbnails, type ThumbCue } from './thumbnails';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { hasDomCaptions } from './subtitleSources/domCaptions';
@@ -112,6 +113,8 @@ export class PipSession implements PipController {
   private skipTarget: SkipTarget | null = null;
   private unwatchSkip: () => void = () => {};
   private nextWatch: { click(): void; stop(): void } | null = null;
+  private thumbs: ThumbCue[] | null = null;
+  private stopThumbs: () => void = () => {};
 
   private constructor(
     adopted: Adopted,
@@ -125,6 +128,10 @@ export class PipSession implements PipController {
     this.overlay = this.buildOverlayFor(adopted.video);
     this.watchSkipIn(adopted.playerRoot);
     this.nextWatch = watchNextEpisode(document, (ok) => this.overlay.setNext(ok));
+    this.stopThumbs = watchThumbnails((cues) => {
+      this.thumbs = cues;
+      this.overlay.setThumbs(cues);
+    });
 
     win.addEventListener('pagehide', () => this.restore());
 
@@ -232,6 +239,7 @@ export class PipSession implements PipController {
     this.video = next;
     this.pipeline.setVideo(next);
     this.overlay = this.buildOverlayFor(next);
+    this.overlay.setThumbs(this.thumbs);
     this.watchSkipIn(this.current.playerRoot);
     this.nextWatch?.stop();
     this.nextWatch = watchNextEpisode(document, (ok) => this.overlay.setNext(ok));
@@ -314,6 +322,7 @@ export class PipSession implements PipController {
     document.removeEventListener('playing', this.onAnyPlaying, true);
     this.unwatchSkip();
     this.nextWatch?.stop();
+    this.stopThumbs();
     this.detachSource();
     release(this.current);
     this.overlay.destroy();

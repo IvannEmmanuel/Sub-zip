@@ -11,6 +11,7 @@ import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type MediaLike, type Overlay } from './overlay';
 import { isDocumentPipSupported, type PipController, type SessionDeps } from './session';
 import { watchNextEpisode } from './nextEpisode';
+import { thumbDiag, watchThumbnails, type ThumbCue } from './thumbnails';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
 import { hasDomCaptions } from './subtitleSources/domCaptions';
@@ -149,6 +150,7 @@ interface HostSession {
   layer: HTMLCanvasElement;
   layerCtx: CanvasRenderingContext2D;
   lastLines: string;
+  thumbs: ThumbCue[] | null;
   hostTimer: number;
   iframeNext: boolean;
   /** Last time the player frame sent us anything (performance.now()). */
@@ -197,6 +199,8 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       session.source = source;
       session.lastSeen = performance.now();
       session.nonce = nonce;
+      session.thumbs = null;
+      session.overlay.setThumbs(null);
       session.lastLines = '';
       session.iframeNext = false;
       post(source, nonce, { t: 'ready' });
@@ -252,7 +256,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
         layer,
       );
 
-      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', hostTimer: 0, iframeNext: false, lastSeen: performance.now(), closed: false };
+      const s: HostSession = { nonce, source, win, overlay, media, canvas, ctx, layer, layerCtx, lastLines: '', thumbs: null, hostTimer: 0, iframeNext: false, lastSeen: performance.now(), closed: false };
       session = s;
       hs = s;
       // Some sites draw the captions in the page AROUND the player frame, where the frame cannot see them: read them here.
@@ -331,6 +335,12 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       s.overlay.setDiag(st.diag ?? '');
       s.overlay.setSkip(st.skip);
       refreshNext(s);
+    } else if (d.t === 'thumbs') {
+      const cues = (d as unknown as { cues?: ThumbCue[] }).cues;
+      if (Array.isArray(cues) && cues.length <= 20000) {
+        s.thumbs = cues;
+        s.overlay.setThumbs(cues);
+      }
     } else if (d.t === 'bye') {
       s.win.close();
     }
@@ -388,6 +398,7 @@ export class RelaySession implements PipController {
   private unwatchSiteSubs: () => void = () => {};
   private usingSiteCues = false;
   private fileHits = 0;
+  private stopThumbs: () => void = () => {};
   /** Captions the top page draws over this frame (read by the host) and what the frame's own page text says. */
   private hostText = '';
   private domText = '';
@@ -482,6 +493,7 @@ export class RelaySession implements PipController {
       this.siteCues = cues;
       if (this.auto) this.setSource('auto');
     });
+    this.stopThumbs = watchThumbnails((cues) => post(this.top, this.nonce, { t: 'thumbs', cues }));
     this.nextWatch = watchNextEpisode(document, (ok) => {
       this.hasNext = ok;
       this.sendState();
@@ -671,7 +683,8 @@ export class RelaySession implements PipController {
 page text captions: ${preciseInfo.domText ? 'yes' : 'none now'}
 site subtitle file: ${site}
 caption canvas layer: ${this.usingSiteCues ? 'replaced by text from the page subtitle file' : this.layerSeen ? 'yes' : 'no'}
-tracks: ${Array.from(this.video.textTracks).map((t) => `${t.kind}/${t.mode}/${t.cues?.length ?? 0}`).join(', ') || 'none'}\nvisible text over video: ${overlayInfo.texts} seen, using "${overlayInfo.picked}"${overlayInfo.rejected.length ? ', skipped ' + overlayInfo.rejected.join(' | ') : ''}\nlibass/JASSUB file seen: ${this.siteCues ? this.siteCues.length + ' lines' : 'no'}
+tracks: ${Array.from(this.video.textTracks).map((t) => `${t.kind}/${t.mode}/${t.cues?.length ?? 0}`).join(', ') || 'none'}\nvisible text over video: ${overlayInfo.texts} seen, using "${overlayInfo.picked}"${overlayInfo.rejected.length ? ', skipped ' + overlayInfo.rejected.join(' | ') : ''}\n${thumbDiag(this.playerRoot)}
+libass/JASSUB file seen: ${this.siteCues ? this.siteCues.length + ' lines' : 'no'}
 frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
   }
 
@@ -797,6 +810,7 @@ frames sent: ${this.fps}/s | page hidden: ${document.hidden}`;
     this.detachSource();
     this.unwatchSkip();
     this.unwatchSiteSubs();
+    this.stopThumbs();
     this.nextWatch?.stop();
     this.deps.onClosed();
   }

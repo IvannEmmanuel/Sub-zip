@@ -166,9 +166,27 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendRe
       );
     return true;
   }
+  if (message?.type === 'fetch-image') {
+    // Seek-preview pictures the page itself already loaded (see thumbnails.ts).
+    if (sender.tab?.id === undefined || !/^https?:\/\//i.test(message.url)) {
+      sendResponse({ ok: false });
+      return false;
+    }
+    fetch(message.url, { credentials: 'include' })
+      .then(async (res) => {
+        const buf = res.ok ? await res.arrayBuffer() : null;
+        if (!buf || buf.byteLength > 12_000_000) return sendResponse({ ok: false });
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        sendResponse({ ok: true, data: { type: res.headers.get('content-type') ?? 'image/jpeg', b64: btoa(bin) } });
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (message?.type === 'fetch-subs') {
     // Only for pages we run in, and only for a subtitle file the page itself already requested (see siteCues.ts).
-    if (sender.tab?.id === undefined || !/^https?:\/\/.+\.(?:vtt|srt|ass|ssa)(?:[?#]|$)/i.test(message.url)) {
+    if (sender.tab?.id === undefined || !/^https?:\/\/.+(?:\.(?:vtt|srt|ass|ssa)(?:[?#]|$)|thumb|storyboard|sprite|preview)/i.test(message.url)) {
       sendResponse({ ok: false });
       return false;
     }
