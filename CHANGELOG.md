@@ -4,6 +4,7 @@ Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a t
 
 ## Unreleased
 - Study tools in the PiP window: replay the current line (R), loop it (O), hover a word to pause and look it up (W), study mode that hides lines until you ask (E / X), dim the picture while nobody talks (Q). All under the ••• button too.
+- Screenshot button (P): downloads the current picture with the subtitle line. Saved words keep a small picture of the scene, shown in the popup list. Protected videos cannot be captured.
 - Save words with the star in the word card (with the line they came from); export them as CSV from the popup's Tools tab.
 - Save the lines shown so far as an .srt from the history panel; words in the history are clickable for lookup.
 - Long videos offer "Continue from m:ss" when you come back (stored on this computer only).

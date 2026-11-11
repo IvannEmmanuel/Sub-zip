@@ -5,7 +5,7 @@ import type { Settings, TranslateMode } from '../lib/settings';
 import { iconSvg, type IconName } from './icons';
 import { defineWord, lookupProblem } from './lookup';
 import { loadBitmap, thumbAt, type ThumbCue } from './thumbnails';
-import { downloadText, loadWords, safeName, saveWord, removeWord, toSrt, type SavedWord } from '../lib/study';
+import { downloadBlob, downloadText, loadWords, safeName, saveWord, removeWord, toSrt, type SavedWord } from '../lib/study';
 import { watchResume } from './resume';
 
 const CSS = /* css */ `
@@ -541,6 +541,12 @@ export function buildOverlay(
   saveBtn.innerHTML = `${iconSvg('download', 18)}<span class="ot"><b>Save lines as .srt</b><small>Download the lines shown so far as a subtitle file</small></span>`;
   saveBtn.addEventListener('click', () => saveTranscript());
   more.append(saveBtn);
+  const shotBtn = doc.createElement('button');
+  shotBtn.type = 'button';
+  shotBtn.className = 'opt';
+  shotBtn.innerHTML = `${iconSvg('camera', 18)}<span class="ot"><b>Save screenshot</b><small>Download the current picture, with the subtitle line</small></span><kbd>P</kbd>`;
+  shotBtn.addEventListener('click', () => void takeScreenshot());
+  more.append(shotBtn);
 
   const skipBtn = doc.createElement('button');
   skipBtn.type = 'button';
@@ -669,6 +675,7 @@ export function buildOverlay(
       case 'q': handlers.update({ autoDim: !settings.autoDim }); break;
       case 'x': reveal(); break;
       case 'g': toggleMore(); break;
+      case 'p': void takeScreenshot(); break;
       case 'd':
         diag.hidden = !diag.hidden;
         renderDiag();
@@ -853,6 +860,61 @@ export function buildOverlay(
     onLineChange(lines.length > 0);
   };
 
+  // The picture currently on screen (video plus the site's caption layer), optionally with the subtitle line drawn on it.
+  const frameCanvas = (withText: boolean, maxW = 0): HTMLCanvasElement | null => {
+    const sw = 'videoWidth' in surfaceEl ? (surfaceEl as HTMLVideoElement).videoWidth : (surfaceEl as HTMLCanvasElement).width;
+    const sh = 'videoHeight' in surfaceEl ? (surfaceEl as HTMLVideoElement).videoHeight : (surfaceEl as HTMLCanvasElement).height;
+    if (!sw || !sh) return null;
+    const k = maxW && sw > maxW ? maxW / sw : 1;
+    const c = doc.createElement('canvas');
+    c.width = Math.round(sw * k);
+    c.height = Math.round(sh * k);
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(surfaceEl as unknown as CanvasImageSource, 0, 0, c.width, c.height);
+    if (layer) ctx.drawImage(layer as unknown as CanvasImageSource, 0, 0, c.width, c.height);
+    const hidden = settings.studyMode && !revealed;
+    if (withText && !hidden) {
+      const size = Math.max(14, Math.round(c.height * 0.055 * settings.scale));
+      ctx.font = `600 ${size}px system-ui, "Segoe UI", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(3, size / 6);
+      const rows = [...subs.querySelectorAll<HTMLElement>('.cue')].map((el) => ({ text: el.textContent ?? '', tr: el.classList.contains('tr') }));
+      let y = c.height - Math.round(c.height * 0.06) - (rows.length - 1) * size * 1.3;
+      for (const row of rows) {
+        ctx.strokeStyle = 'rgba(0,0,0,.9)';
+        ctx.fillStyle = row.tr ? '#FDE68A' : settings.textColor;
+        ctx.strokeText(row.text, c.width / 2, y, c.width * 0.94);
+        ctx.fillText(row.text, c.width / 2, y, c.width * 0.94);
+        y += size * 1.3;
+      }
+    }
+    return c;
+  };
+  /** A small JPEG of the frame for a saved word; '' when the site does not allow capturing its video. */
+  const wordShot = (): string => {
+    try {
+      return frameCanvas(false, 320)?.toDataURL('image/jpeg', 0.65) ?? '';
+    } catch {
+      return '';
+    }
+  };
+  const takeScreenshot = async () => {
+    try {
+      const c = frameCanvas(true);
+      if (!c) return flash('Nothing to capture yet');
+      const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'));
+      if (!blob) return flash('Could not capture this video');
+      const name = `${safeName(document.title, 'screenshot')} ${fmtTime(video.currentTime).replace(/:/g, '-')}.png`;
+      downloadBlob(doc, name, blob);
+      flash(`Saved ${name}`);
+    } catch {
+      flash('This site protects its video, so it cannot be captured');
+    }
+  };
+
   const saveTranscript = () => {
     const entries = handlers.history();
     if (!entries.length) return flash('No lines yet to save');
@@ -976,6 +1038,8 @@ export function buildOverlay(
         flash('Removed from saved words');
       } else {
         savedWords.add(word.toLowerCase());
+        const shot = wordShot();
+        if (shot) entry.shot = shot;
         void saveWord(entry);
         flash('Saved. Export from the extension popup, Tools tab');
       }

@@ -45,10 +45,13 @@ export interface SavedWord {
   /** Video time of the line, seconds. */
   time: number;
   savedAt: number;
+  /** Small JPEG of the video frame (data URL), when the site allowed capturing it. */
+  shot?: string;
 }
 
 const WORDS_KEY = 'savedWords';
 const MAX_WORDS = 2000;
+const MAX_SHOTS = 200;
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -73,6 +76,10 @@ async function storeWords(words: SavedWord[]): Promise<void> {
 export async function saveWord(entry: SavedWord): Promise<SavedWord[]> {
   const words = (await loadWords()).filter((w) => !same(w.word, entry.word));
   words.push(entry);
+  // Pictures are big: keep them only on the newest words so the storage quota is never hit.
+  words.forEach((w, i) => {
+    if (i < words.length - MAX_SHOTS) delete w.shot;
+  });
   await storeWords(words);
   return words;
 }
@@ -179,4 +186,17 @@ export function downloadText(doc: Document, name: string, text: string, mime: st
 export function safeName(title: string, fallback: string): string {
   const cleaned = title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
   return cleaned || fallback;
+}
+
+/** Downloads a picture or other binary blob. */
+export function downloadBlob(doc: Document, name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const a = doc.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  doc.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

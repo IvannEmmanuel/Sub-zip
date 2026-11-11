@@ -326,6 +326,7 @@ export function App() {
                       .slice(0, 6)
                       .map((w) => (
                         <li key={w.word} class="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-line">
+                          {w.shot && <img src={w.shot} alt="" class="h-6 w-10 shrink-0 rounded object-cover" />}
                           <span class="min-w-0 flex-1 truncate">
                             <span class="font-semibold text-ink">{w.word}</span>
                             {w.translation && <span class="text-primary-soft"> · {w.translation}</span>}
