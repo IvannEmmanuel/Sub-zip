@@ -1,5 +1,5 @@
 import type { ActionResult, HistoryReply, Message, SourceId, Status } from '../lib/messaging';
-import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, type Settings } from '../lib/settings';
+import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, saveSettings, type Settings } from '../lib/settings';
 import { initPageButton, showToast } from './pageButton';
 import { CanvasPipSession, isCanvasPipSupported } from './canvasPip';
 import { askResume, initRelayHost, RelaySession } from './relay';
@@ -77,7 +77,14 @@ function start(): void {
    * Top page: the custom Document PiP window. Player inside an iframe: ask the top page to open that same window and
    * stream the video to it (relay); only if that fails fall back to Chrome's own, control-less PiP window.
    */
-  async function openSession(video: HTMLVideoElement, deps: SessionDeps): Promise<PipController> {
+  async function openSession(video: HTMLVideoElement, given: SessionDeps): Promise<PipController> {
+    // A delay fits one video, not all of them: every new PiP window starts in sync.
+    let deps = given;
+    if (deps.settings.subDelay !== 0) {
+      deps = { ...deps, settings: { ...deps.settings, subDelay: 0 } };
+      settings = { ...settings, subDelay: 0 };
+      void saveSettings({ subDelay: 0 });
+    }
     if (useDocumentPip()) return PipSession.open(video, deps);
     if (!isTopFrame) {
       try {

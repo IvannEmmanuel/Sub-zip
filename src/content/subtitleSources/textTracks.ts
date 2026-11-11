@@ -1,4 +1,5 @@
-import { sortCues, type Cue } from '../../lib/cues';
+import { findActive, sortCues, type Cue } from '../../lib/cues';
+import { subDelay } from '../../lib/delay';
 
 export function getSubtitleTracks(video: HTMLVideoElement): TextTrack[] {
   return Array.from(video.textTracks).filter(
@@ -39,8 +40,21 @@ export function attachTextTrack(video: HTMLVideoElement, onText: (text: string) 
   track.mode = 'hidden';
 
   let last = '\u0000'; // never equals a real caption, so the first check always reports
+  let snap: Cue[] = [];
+  let snapLen = -1;
   const check = () => {
-    const text = Array.from(track.activeCues ?? []).map(cueText).filter(Boolean).join('\n');
+    let text: string;
+    if (subDelay.value === 0) {
+      text = Array.from(track.activeCues ?? []).map(cueText).filter(Boolean).join('\n');
+    } else {
+      // Shifted: look the time up in the whole track instead of the browser's "active now" list.
+      const n = track.cues?.length ?? 0;
+      if (n !== snapLen) {
+        snap = trackToCues(track);
+        snapLen = n;
+      }
+      text = findActive(snap, video.currentTime - subDelay.value);
+    }
     if (text === last) return;
     last = text;
     onText(text);

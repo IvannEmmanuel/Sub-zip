@@ -1,4 +1,5 @@
 import { findActive, type Cue } from '../../lib/cues';
+import { subDelay } from '../../lib/delay';
 
 /**
  * Drives subtitle text from parsed cues. Uses media events (not throttled in background tabs) plus
@@ -15,7 +16,7 @@ export function attachFileCues(
   let stopped = false;
 
   const emit = () => {
-    const text = findActive(cues, video.currentTime);
+    const text = findActive(cues, video.currentTime - subDelay.value);
     if (text !== last) {
       last = text;
       onText(text);

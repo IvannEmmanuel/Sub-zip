@@ -2,6 +2,9 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## 0.3.1 - 2026-11-11
+- Subtitle delay: `[` and `]` show subtitles earlier or later (Shift for bigger steps, `\` resets), also in the tools panel. Works with subtitle files and tracks, and starts at 0 for each new PiP window.
+
 ## 0.3.0 - 2026-11-11
 - Popup redesign: new Learn tab (translation, study options, saved words) and Tools tab (page button, automatic PiP, history), subtitle presets in Style, the logo in the header, and a light theme that follows the browser.
 - PiP window: hover labels on the control buttons, a one-time tip about the tools panel, a fade-in word card. The toolbar icon shows ON while a tab has a PiP window.

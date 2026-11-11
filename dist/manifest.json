@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sub PiP",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Subtitles in Picture-in-Picture, with word lookup and study tools.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/index.ts-loader-DP8dj2km.js"
+        "assets/index.ts-loader-ei82TDF3.js"
       ],
       "matches": [
         "<all_urls>"
@@ -56,8 +56,8 @@
         "<all_urls>"
       ],
       "resources": [
-        "assets/study-Bp6NIDDH.js",
-        "assets/index.ts-MSFIPp_v.js"
+        "assets/study-DhceiZyJ.js",
+        "assets/index.ts-B5vYE_ZV.js"
       ],
       "use_dynamic_url": false
     }

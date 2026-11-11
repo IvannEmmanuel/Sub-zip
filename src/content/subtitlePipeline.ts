@@ -1,5 +1,6 @@
 import type { HistoryEntry, Line } from '../lib/messaging';
 import type { Settings, TranslateMode } from '../lib/settings';
+import { subDelay } from '../lib/delay';
 import { translateText } from './lookup';
 
 const MAX_HISTORY = 100;
@@ -34,7 +35,9 @@ export class SubtitlePipeline {
     private video: HTMLVideoElement,
     private settings: Settings,
     private readonly onShow: (lines: Line[]) => void,
-  ) {}
+  ) {
+    subDelay.value = settings.subDelay;
+  }
 
   history(): HistoryEntry[] {
     return this.entries;
@@ -50,6 +53,7 @@ export class SubtitlePipeline {
   applySettings(next: Settings): void {
     const changed = next.translateMode !== this.settings.translateMode || next.translateTo !== this.settings.translateTo;
     this.settings = next;
+    subDelay.value = next.subDelay;
     if (changed) this.refresh();
   }
 

@@ -27,6 +27,8 @@ export interface Settings {
   autoDim: boolean;
   /** Hide each subtitle line until you ask for it (listen first, check after). */
   studyMode: boolean;
+  /** Seconds the subtitle file/track is shifted: positive = later, negative = earlier. Reset to 0 for each new PiP window. */
+  subDelay: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hoverLookup: true,
   autoDim: false,
   studyMode: false,
+  subDelay: 0,
 };
 
 export const LANGUAGES: { code: string; name: string }[] = [

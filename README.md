@@ -66,6 +66,7 @@ The toolbar popup has four tabs: **Player** (subtitle source, load a file), **St
 | **Skip intro** | When the site shows "Skip intro / opening / recap / credits", a Skip button appears (`S`). |
 | **Seek preview** | Hover the seek bar for the site's thumbnail picture, when the site has one. |
 | **Open PiP when you leave the tab** | Popup → Tools. Uses Chrome's automatic PiP (Chrome 134+; allow it for the site when Chrome asks). Brave and Firefox don't support it. |
+| **Subtitle delay** | `[` / `]` | Subtitles early or late? Shift them by 0.1 s (Shift: 0.5 s), `\` resets. Works with subtitle files and tracks, not captions the page draws itself. It starts at 0 for every new PiP window. |
 | **Subtitle style** | Pick a preset (Classic, Cinema, Sunny, Boxed, Terminal) or set size, colour, outline, background, position and font in the popup's Style tab. The tools panel in the PiP window changes size and position too. |
 
 ### Learning
@@ -117,6 +118,7 @@ These work while the PiP window is focused.
 | `M` | Mute | `R` / `O` | Replay / loop line |
 | `S` | Skip intro | `W` | Hover to look up |
 | `P` | Screenshot | `E` / `X` | Study mode / show line |
+| `[` / `]` | Subtitle delay (`\` resets) | | |
 | `G` | Tools panel | `Q` | Dim when silent |
 | `D` | Diagnostics box | `Esc` | Close card or panel |
 

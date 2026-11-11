@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { T } from '../lib/tokens';
+import { fmtDelay } from '../lib/delay';
 import { applySubtitleVars } from '../lib/subtitleStyle';
 import type { HistoryEntry, Line } from '../lib/messaging';
 import type { Settings, TranslateMode } from '../lib/settings';
@@ -530,6 +531,13 @@ export function buildOverlay(
   };
   const sizeLabel = doc.createElement('output');
   sizeLabel.className = 'val';
+  const delayLabel = doc.createElement('output');
+  delayLabel.className = 'val';
+  const shiftDelay = (by: number) => {
+    const next = Math.round(Math.min(30, Math.max(-30, settings.subDelay + by)) * 10) / 10;
+    handlers.update({ subDelay: next });
+    flash(`Subtitle delay ${fmtDelay(next)}${next > 0 ? ' (later)' : next < 0 ? ' (earlier)' : ''}`);
+  };
 
   group('Study');
   addSwitch('loop', 'Loop this line', 'Repeat the current line until you stop it', 'O', 'loop', () => toggleLoop());
@@ -549,6 +557,15 @@ export function buildOverlay(
     { label: 'Move text up', icon: 'up', run: () => nudge(true) },
     { label: 'Move text down', icon: 'down', run: () => nudge(false) },
   ]);
+  group('Timing');
+  addStepper(
+    'Subtitle delay',
+    [
+      { label: 'Show subtitles earlier', icon: 'back', run: () => shiftDelay(-0.1) },
+      { label: 'Show subtitles later', icon: 'forward', run: () => shiftDelay(0.1) },
+    ],
+    delayLabel,
+  );
   group('Save');
   const saveBtn = doc.createElement('button');
   saveBtn.type = 'button';
@@ -691,6 +708,9 @@ export function buildOverlay(
       case 'x': reveal(); break;
       case 'g': toggleMore(); break;
       case 'p': void takeScreenshot(); break;
+      case '[': case '{': shiftDelay(e.shiftKey ? -0.5 : -0.1); break;
+      case ']': case '}': shiftDelay(e.shiftKey ? 0.5 : 0.1); break;
+      case '\\': handlers.update({ subDelay: 0 }); flash('Subtitle delay reset'); break;
       case 'd':
         diag.hidden = !diag.hidden;
         renderDiag();
@@ -733,6 +753,7 @@ export function buildOverlay(
     stage.classList.toggle('pos-top', next.position === 'top');
     stage.classList.toggle('study', next.studyMode);
     sizeLabel.textContent = `${Math.round(next.scale * 100)}%`;
+    delayLabel.textContent = fmtDelay(next.subDelay);
     chips.get('hover')?.setAttribute('aria-checked', String(next.hoverLookup));
     chips.get('study')?.setAttribute('aria-checked', String(next.studyMode));
     chips.get('dim')?.setAttribute('aria-checked', String(next.autoDim));
