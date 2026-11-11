@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sub PiP",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Subtitles in Picture-in-Picture, with word lookup and study tools.",
   "minimum_chrome_version": "116",
   "icons": {
