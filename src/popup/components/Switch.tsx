@@ -17,11 +17,11 @@ export function Switch({ label, hint, checked, onChange }: SwitchProps) {
       aria-checked={checked}
       aria-labelledby={labelId}
       onClick={() => onChange(!checked)}
-      class="focus-ring flex min-h-[40px] w-full cursor-pointer items-center justify-between gap-3 rounded-lg text-left"
+      class="focus-ring flex min-h-[40px] w-full cursor-pointer items-center justify-between gap-3 rounded-lg py-1 text-left"
     >
       <span id={labelId} class="min-w-0">
         <span class="block text-[13px] text-ink">{label}</span>
-        {hint && <span class="block truncate text-[11px] text-mute">{hint}</span>}
+        {hint && <span class="block text-[11px] leading-snug text-mute">{hint}</span>}
       </span>
       <span
         aria-hidden="true"

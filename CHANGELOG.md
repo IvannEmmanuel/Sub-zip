@@ -3,6 +3,10 @@
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
 ## Unreleased
+- Popup redesign: new Learn tab (translation, study options, saved words) and Tools tab (page button, automatic PiP, history), subtitle presets in Style, the logo in the header, and a light theme that follows the browser.
+- PiP window: hover labels on the control buttons, a one-time tip about the tools panel, a fade-in word card. The toolbar icon shows ON while a tab has a PiP window.
+- New logo and icons, promo images in `assets/`, screenshots in the README. One shared colour palette (`src/lib/tokens.json`) for the popup and the PiP window.
+- Fixed: the "PiP + subs" button could appear inside the PiP window itself.
 - Study tools in the PiP window: replay the current line (R), loop it (O), hover a word to pause and look it up (W), study mode that hides lines until you ask (E / X), dim the picture while nobody talks (Q). All under the ••• button too.
 - Screenshot button (P): downloads the current picture with the subtitle line. Saved words keep a small picture of the scene, shown in the popup list. Protected videos cannot be captured.
 - Save words with the star in the word card (with the line they came from); export them as CSV from the popup's Tools tab.

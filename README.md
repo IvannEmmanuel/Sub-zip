@@ -16,6 +16,8 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+<p align="center"><img src="assets/screenshots/pip-window.png" alt="The Sub PiP window: video with subtitles and controls" width="760"></p>
+
 ---
 
 ## What it does
@@ -52,7 +54,7 @@ Chrome and Edge, version 116 or newer. Nothing is installed from a store, so it 
 2. Hover the video and click **PiP + subs**. You can also click the toolbar icon or press `Alt+P` (change it at `chrome://extensions/shortcuts`).
 3. Hover the PiP window to show the controls.
 
-The toolbar popup has three tabs: **Player** (subtitle source, load a file), **Style** (size, colour, position) and **Tools** (translation, learning options, saved words, history).
+The toolbar popup has four tabs: **Player** (subtitle source, load a file), **Style** (presets, size, colour, position), **Learn** (translation, study options, saved words) and **Tools** (page button, automatic PiP, history). It follows your browser's light or dark theme, and a small ON mark shows on the toolbar icon while a tab has a PiP window open.
 
 ## Features
 
@@ -64,7 +66,7 @@ The toolbar popup has three tabs: **Player** (subtitle source, load a file), **S
 | **Skip intro** | When the site shows "Skip intro / opening / recap / credits", a Skip button appears (`S`). |
 | **Seek preview** | Hover the seek bar for the site's thumbnail picture, when the site has one. |
 | **Open PiP when you leave the tab** | Popup → Tools. Uses Chrome's automatic PiP (Chrome 134+; allow it for the site when Chrome asks). Brave and Firefox don't support it. |
-| **Subtitle style** | Size, colour, outline, background, position and font in the popup's Style tab, or the buttons in the PiP window. |
+| **Subtitle style** | Pick a preset (Classic, Cinema, Sunny, Boxed, Terminal) or set size, colour, outline, background, position and font in the popup's Style tab. The tools panel in the PiP window changes size and position too. |
 
 ### Learning
 
@@ -72,7 +74,7 @@ Open the tools panel with the sliders button or `G`. Every option is explained t
 
 | Feature | Key | What it does |
 |---|---|---|
-| **Translation** | `T` | Cycle Off → Dual (original + translation) → Translated only. Language is set in popup → Tools. |
+| **Translation** | `T` | Cycle Off → Dual (original + translation) → Translated only. Language is set in popup → Learn. |
 | **Click a word** | click | Shows its translation and dictionary entry. The video pauses while the card is open. |
 | **Hover to look up** | `W` | Rest the pointer on a word to see its meaning. Move away and the video resumes. |
 | **Replay line** | `R` | Jump back to the start of the current line. |
@@ -80,10 +82,27 @@ Open the tools panel with the sliders button or `G`. Every option is explained t
 | **Study mode** | `E`, then `X` | Lines stay hidden until you press `X` or click "Show line". |
 | **Dim when silent** | `Q` | Fades the picture while nobody talks. |
 | **History** | `H` | Every line shown so far. Click a line to jump back, or a word to look it up. |
-| **Saved words** | star | The star in a word's card saves it with the line it came from and a small picture of the scene. Download them as a CSV (opens in Excel, imports into Anki) from popup → Tools. |
+| **Saved words** | star | The star in a word's card saves it with the line it came from and a small picture of the scene. Download them as a CSV (opens in Excel, imports into Anki) from popup → Learn. |
 | **Screenshot** | `P` | Saves the current picture as a PNG, with the subtitle line. |
 | **Save lines as .srt** | History panel | Downloads the lines shown so far as a subtitle file. |
 | **Continue where you stopped** | automatic | Videos longer than 10 minutes offer "Continue from m:ss" when you come back. |
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/word-lookup.png" alt="Word lookup card"><br><sub>Hover or click a word for its meaning, and star it to save it.</sub></td>
+    <td width="50%"><img src="assets/screenshots/tools-panel.png" alt="Tools panel"><br><sub>The tools panel: study options, text size and position, saving.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/history.png" alt="Subtitle history"><br><sub>History: click a line to jump back, a word to look it up.</sub></td>
+    <td>
+      <img src="assets/screenshots/popup-style-dark.png" alt="Popup, Style tab, dark" width="48%">
+      <img src="assets/screenshots/popup-learn-light.png" alt="Popup, Learn tab, light" width="48%"><br>
+      <sub>The popup in dark and light.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Keyboard shortcuts
 

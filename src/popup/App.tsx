@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { Download, FileText, Languages, Play, PictureInPicture2, SlidersHorizontal, Trash2, X } from 'lucide-preact';
+import { Download, FileText, GraduationCap, Play, PictureInPicture2, SlidersHorizontal, Trash2, Wrench, X } from 'lucide-preact';
 import { sortCues } from '../lib/cues';
 import {
   ensureContentScript,
@@ -20,7 +20,7 @@ import { Swatches } from './components/Swatches';
 import { Switch } from './components/Switch';
 import { Tabs } from './components/Tabs';
 
-type TabId = 'player' | 'style' | 'tools';
+type TabId = 'player' | 'style' | 'learn' | 'tools';
 
 const SOURCE_LABELS: Record<SourceId, string> = {
   tracks: 'Tracks',
@@ -35,6 +35,17 @@ const COLORS = [
   { value: '#7DE3FF', name: 'Cyan' },
   { value: '#86EFAC', name: 'Green' },
   { value: '#F9A8D4', name: 'Pink' },
+];
+
+const FONTS: Record<Settings['font'], string> = { sans: 'system-ui, "Segoe UI", sans-serif', serif: 'Georgia, "Times New Roman", serif', mono: 'ui-monospace, Consolas, monospace' };
+
+/** Ready-made looks for the subtitles; each one sets several style values at once. */
+const PRESETS: { name: string; patch: Pick<Settings, 'textColor' | 'bgOpacity' | 'outline' | 'font'> }[] = [
+  { name: 'Classic', patch: { textColor: '#FFFFFF', bgOpacity: 0.55, outline: true, font: 'sans' } },
+  { name: 'Cinema', patch: { textColor: '#FFFFFF', bgOpacity: 0, outline: true, font: 'serif' } },
+  { name: 'Sunny', patch: { textColor: '#FFE066', bgOpacity: 0, outline: true, font: 'sans' } },
+  { name: 'Boxed', patch: { textColor: '#FFFFFF', bgOpacity: 0.85, outline: false, font: 'sans' } },
+  { name: 'Terminal', patch: { textColor: '#86EFAC', bgOpacity: 0.7, outline: false, font: 'mono' } },
 ];
 
 const chromeMajor = Number(/Chrom(?:e|ium)\/(\d+)/.exec(navigator.userAgent)?.[1] ?? 0);
@@ -73,7 +84,7 @@ export function App() {
   const [isBrave, setIsBrave] = useState(false);
   const [words, setWords] = useState<SavedWord[]>([]);
   useEffect(() => {
-    if (tab === 'tools') void loadWords().then(setWords);
+    if (tab === 'learn') void loadWords().then(setWords);
   }, [tab]);
   useEffect(() => {
     const brave = (navigator as Navigator & { brave?: { isBrave(): Promise<boolean> } }).brave;
@@ -177,9 +188,7 @@ export function App() {
     <main class="flex h-[560px] flex-col gap-3 p-4">
       <header class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white" aria-hidden="true">
-            <PictureInPicture2 size={18} />
-          </span>
+          <img src="/icons/icon48.png" alt="" width={32} height={32} class="h-8 w-8" />
           <h1 class="text-[15px] font-semibold tracking-tight">Sub PiP</h1>
         </div>
         <kbd class="rounded-md border border-line bg-raised px-1.5 py-0.5 text-[11px] text-mute" title="Toggle Picture-in-Picture">
@@ -193,7 +202,8 @@ export function App() {
         tabs={[
           { id: 'player', label: 'Player', icon: <Play size={14} /> },
           { id: 'style', label: 'Style', icon: <SlidersHorizontal size={14} /> },
-          { id: 'tools', label: 'Tools', icon: <Languages size={14} /> },
+          { id: 'learn', label: 'Learn', icon: <GraduationCap size={14} /> },
+          { id: 'tools', label: 'Tools', icon: <Wrench size={14} /> },
         ]}
       />
 
@@ -250,7 +260,7 @@ export function App() {
               </button>
             </section>
           </div>
-        ) : tab === 'tools' ? (
+        ) : tab === 'learn' ? (
           <div class="flex flex-col gap-4">
             <section aria-label="Translation" class="flex flex-col gap-2">
               <h2 class="section-label">Translation</h2>
@@ -360,6 +370,18 @@ export function App() {
               )}
             </section>
 
+          </div>
+        ) : tab === 'tools' ? (
+          <div class="flex flex-col gap-4">
+            <section aria-label="Page button">
+              <Switch
+                label="“PiP + subs” button on videos"
+                hint="The small button that appears when you hover a video"
+                checked={settings.pageButton}
+                onChange={(pageButton) => updateSettings({ pageButton })}
+              />
+            </section>
+
             <section aria-label="Automatic Picture-in-Picture" class="border-t border-line pt-2">
               <Switch
                 label="Open PiP when I leave the tab"
@@ -410,7 +432,7 @@ export function App() {
                           <span class="min-w-0">
                             <span class="block text-ink">{h.text}</span>
                             {settings.translateMode !== 'off' && h.translated && (
-                              <span class="block text-yellow-200">{h.translated}</span>
+                              <span class="block text-translation">{h.translated}</span>
                             )}
                           </span>
                         </button>
@@ -423,6 +445,41 @@ export function App() {
         ) : (
           <div class="flex flex-col gap-1">
             <Preview settings={settings} />
+            <section aria-label="Presets" class="mt-3 flex flex-col gap-1.5">
+              <h2 class="section-label">Presets</h2>
+              <div class="grid grid-cols-5 gap-1.5">
+                {PRESETS.map((p) => {
+                  const active = (Object.keys(p.patch) as (keyof typeof p.patch)[]).every((k) => settings[k] === p.patch[k]);
+                  return (
+                    <button
+                      key={p.name}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => updateSettings(p.patch)}
+                      class={[
+                        'focus-ring flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-1.5 transition-colors duration-150',
+                        active ? 'border-primary bg-primary/15' : 'border-line bg-raised hover:bg-line',
+                      ].join(' ')}
+                    >
+                      <span
+                        class="flex h-7 w-full items-center justify-center rounded text-[13px] font-semibold"
+                        style={{
+                          background: `linear-gradient(135deg, #1e3a5f, #0f172a)`,
+                          color: p.patch.textColor,
+                          fontFamily: FONTS[p.patch.font],
+                          textShadow: p.patch.outline ? '0 0 2px #000, 0 0 2px #000' : 'none',
+                          boxShadow: `inset 0 -14px 0 rgba(0,0,0,${p.patch.bgOpacity * 0.6})`,
+                        }}
+                        aria-hidden="true"
+                      >
+                        Aa
+                      </span>
+                      <span class="text-[10px] font-medium text-ink">{p.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
             <div class="mt-2 flex flex-col">
               <Slider label="Text size" min={0.6} max={2.5} step={0.1} value={settings.scale} format={(v) => `${Math.round(v * 100)}%`} onChange={(scale) => updateSettings({ scale })} />
               <Slider label="Distance" min={0} max={40} step={1} value={settings.offset} format={(v) => `${v}%`} onChange={(offset) => updateSettings({ offset })} />
@@ -451,7 +508,6 @@ export function App() {
               <Swatches label="Color" value={settings.textColor} options={COLORS} onChange={(textColor) => updateSettings({ textColor })} />
               <div class="mt-1 border-t border-line pt-1">
                 <Switch label="Text outline" checked={settings.outline} onChange={(outline) => updateSettings({ outline })} />
-                <Switch label="“PiP + subs” button on videos" checked={settings.pageButton} onChange={(pageButton) => updateSettings({ pageButton })} />
               </div>
             </div>
           </div>

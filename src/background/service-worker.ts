@@ -156,6 +156,15 @@ function installAutoPip(enabled: boolean): void {
 }
 
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse: (r: BackgroundReply) => void) => {
+  if (message?.type === 'pip-badge') {
+    // A small "on" mark on the toolbar icon while this tab has a Picture-in-Picture window.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      void chrome.action.setBadgeText({ tabId, text: message.open ? 'ON' : '' });
+      if (message.open) void chrome.action.setBadgeBackgroundColor({ tabId, color: '#2563EB' });
+    }
+    return false;
+  }
   if (message?.type === 'auto-pip') {
     if (sender.tab?.id === undefined || sender.frameId !== 0) return false; // only the top frame can open Document PiP
     chrome.scripting

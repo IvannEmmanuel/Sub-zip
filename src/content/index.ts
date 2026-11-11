@@ -206,6 +206,21 @@ function start(): void {
     }
   }
 
+  // Tell the toolbar icon whether this tab has a PiP window (covers both the direct and the iframe-relay window).
+  if (isTopFrame && window.documentPictureInPicture) {
+    const badge = (open: boolean) => {
+      try {
+        void chrome.runtime.sendMessage({ type: 'pip-badge', open }).catch(() => {});
+      } catch {
+        /* extension was reloaded */
+      }
+    };
+    (window.documentPictureInPicture as unknown as EventTarget).addEventListener('enter', (e) => {
+      badge(true);
+      (e as unknown as { window: Window }).window.addEventListener('pagehide', () => badge(false));
+    });
+  }
+
   initPageButton(
     () => settings.pageButton && isPipSupported() && !session?.isOpen && !opening,
     (video) =>
@@ -215,7 +230,11 @@ function start(): void {
   );
 }
 
-if (!guard.__subPipAlive?.()) {
+// Our own Picture-in-Picture window is a top-level about:blank page and gets this script too (match_about_blank):
+// it must stay out of it, or the "PiP + subs" button shows up on top of the controls.
+const isPipWindow = window === window.top && location.protocol === 'about:';
+
+if (!isPipWindow && !guard.__subPipAlive?.()) {
   guard.__subPipAlive = isAlive;
   start();
 }

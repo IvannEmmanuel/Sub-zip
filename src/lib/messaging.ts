@@ -33,7 +33,8 @@ export type BackgroundRequest =
   | { type: 'define'; word: string; to: string }
   | { type: 'auto-pip'; enabled: boolean }
   | { type: 'fetch-subs'; url: string }
-  | { type: 'fetch-image'; url: string };
+  | { type: 'fetch-image'; url: string }
+  | { type: 'pip-badge'; open: boolean };
 
 export interface BackgroundReply<T = unknown> {
   ok: boolean;

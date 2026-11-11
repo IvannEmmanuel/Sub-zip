@@ -6,7 +6,7 @@
   html,
   body {
     @apply m-0 bg-surface text-ink font-sans antialiased;
-    color-scheme: dark;
+    color-scheme: light dark;
   }
   body {
     width: 340px;
@@ -34,13 +34,13 @@
   /* Thin dark scrollbar for the panel (only appears if content ever exceeds the fixed popup height). */
   .scroll {
     scrollbar-width: thin;
-    scrollbar-color: #1f2937 transparent;
+    scrollbar-color: rgb(var(--c-line)) transparent;
   }
   .scroll::-webkit-scrollbar {
     width: 6px;
   }
   .scroll::-webkit-scrollbar-thumb {
-    background: #1f2937;
+    background: rgb(var(--c-line));
     border-radius: 3px;
   }
 
@@ -56,7 +56,7 @@
   .range::-webkit-slider-runnable-track {
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(to right, #60a5fa var(--fill), #1f2937 var(--fill));
+    background: linear-gradient(to right, rgb(var(--c-primary-soft)) var(--fill), rgb(var(--c-line)) var(--fill));
   }
   .range::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -65,11 +65,11 @@
     margin-top: -6px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 0 0 2px #2563eb;
+    box-shadow: 0 0 0 2px rgb(var(--c-primary));
     transition: box-shadow 150ms ease;
   }
   .range:hover::-webkit-slider-thumb {
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.5);
+    box-shadow: 0 0 0 4px rgb(var(--c-primary) / 0.5);
   }
 }
 
