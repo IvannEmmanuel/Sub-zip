@@ -226,6 +226,8 @@ export interface OverlayHandlers {
   skip(): void;
   /** Go to the next episode (only offered while `setNext(true)`). */
   next(): void;
+  /** Feeds of short videos: go to the next (1) or previous (-1) video. */
+  step(dir: 1 | -1): void;
 }
 
 export interface Overlay {
@@ -235,6 +237,8 @@ export interface Overlay {
   setSkip(label: string | null): void;
   /** Shows or hides the Next-episode button. */
   setNext(available: boolean): void;
+  /** Shows or hides the up / down buttons used on reels and shorts. */
+  setFeed(on: boolean): void;
   /** The site's seek-bar preview pictures (null = none). */
   setThumbs(cues: ThumbCue[] | null): void;
   /** Text for the diagnostics box (press D in the window to show it). */
@@ -449,6 +453,14 @@ export function buildOverlay(
   nextBtn.hidden = true;
   const setNext = (available: boolean) => {
     nextBtn.hidden = !available;
+  };
+  const prevBtn = addButton({ id: 'feed-prev', label: 'Previous video', icon: 'up' }, () => handlers.step(-1));
+  const nextVidBtn = addButton({ id: 'feed-next', label: 'Next video', icon: 'down' }, () => handlers.step(1));
+  prevBtn.hidden = true;
+  nextVidBtn.hidden = true;
+  const setFeed = (on: boolean) => {
+    prevBtn.hidden = !on;
+    nextVidBtn.hidden = !on;
   };
   const muteBtn = addButton({ id: 'mute', label: 'Mute', icon: 'volume' }, toggleMute);
   const volWrap = doc.createElement('div');
@@ -1198,6 +1210,7 @@ export function buildOverlay(
     setLines,
     setSkip,
     setNext,
+    setFeed,
     setThumbs: (cues) => {
       thumbs = cues && cues.length ? cues : null;
       if (!pv.hidden) drawThumb();

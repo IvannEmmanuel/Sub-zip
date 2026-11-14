@@ -251,6 +251,7 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
           },
           skip: () => media.send({ c: 'skip' }),
           next: () => (topNext.found ? topNext.watch?.click() : media.send({ c: 'next' })),
+          step: () => {}, // reels and shorts play in the page itself, not in an embedded player
         },
         canvas,
         layer,

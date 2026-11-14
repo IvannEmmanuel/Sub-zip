@@ -40,3 +40,14 @@ describe('skipLabel', () => {
     expect(skipLabel('This is a very long caption that mentions skip intro somewhere')).toBeNull();
   });
 });
+
+import { isFeedPage } from '../src/content/feedNav';
+
+describe('isFeedPage', () => {
+  it('is true for reels and shorts feeds', () => {
+    for (const u of ['https://www.facebook.com/reel/123', 'https://www.facebook.com/reels/', 'https://m.facebook.com/watch/', 'https://www.youtube.com/shorts/abc', 'https://www.instagram.com/reels/xyz/', 'https://www.tiktok.com/@a/video/1']) expect(isFeedPage(u)).toBe(true);
+  });
+  it('is false for ordinary video pages', () => {
+    for (const u of ['https://www.youtube.com/watch?v=abc', 'https://www.instagram.com/p/xyz/', 'https://example.com/anime/ep-1', 'not a url']) expect(isFeedPage(u)).toBe(false);
+  });
+});

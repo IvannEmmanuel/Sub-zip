@@ -3,6 +3,7 @@ import type { HistoryEntry, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
 import { watchNextEpisode } from './nextEpisode';
+import { isFeedPage, stepFeed } from './feedNav';
 import { watchThumbnails, type ThumbCue } from './thumbnails';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
@@ -171,14 +172,17 @@ export class PipSession implements PipController {
   }
 
   private buildOverlayFor(video: HTMLVideoElement): Overlay {
-    return buildOverlay(this.win, video, this.settings, {
+    const overlay = buildOverlay(this.win, video, this.settings, {
       update: (patch) => this.updateSettings(patch),
       close: () => this.win.close(),
       history: () => this.pipeline.history(),
       seekTo: (time) => this.seek(time),
       skip: () => this.skipNow(),
       next: () => this.nextWatch?.click(),
+      step: (dir) => stepFeed(document, this.current.placeholder, dir),
     });
+    overlay.setFeed(isFeedPage(location.href));
+    return overlay;
   }
 
   private watchSkipIn(root: Element): void {
