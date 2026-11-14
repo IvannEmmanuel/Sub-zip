@@ -111,6 +111,7 @@ export class PipSession implements PipController {
   private readonly pollTimer: number;
   private followTimer = 0;
   private auto = true;
+  private subsHidden = false;
   private skipTarget: SkipTarget | null = null;
   private unwatchSkip: () => void = () => {};
   private nextWatch: { click(): void; stop(): void } | null = null;
@@ -180,6 +181,10 @@ export class PipSession implements PipController {
       skip: () => this.skipNow(),
       next: () => this.nextWatch?.click(),
       step: (dir) => stepFeed(document, this.current.placeholder, dir),
+      subsHidden: this.subsHidden,
+      onSubsToggle: (hidden) => {
+        this.subsHidden = hidden;
+      },
     });
     overlay.setFeed(isFeedPage(location.href));
     return overlay;

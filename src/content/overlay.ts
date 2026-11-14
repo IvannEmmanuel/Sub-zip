@@ -228,6 +228,10 @@ export interface OverlayHandlers {
   next(): void;
   /** Feeds of short videos: go to the next (1) or previous (-1) video. */
   step(dir: 1 | -1): void;
+  /** Subtitles were hidden by the person (kept across videos in the same window). */
+  subsHidden?: boolean;
+  /** Called when the person shows or hides the subtitles. */
+  onSubsToggle?(hidden: boolean): void;
 }
 
 export interface Overlay {
@@ -441,6 +445,7 @@ export function buildOverlay(
   const toggleMute = () => (video.muted = !video.muted);
   const toggleSubs = () => {
     const off = stage.classList.toggle('subs-off');
+    handlers.onSubsToggle?.(off);
     const cc = buttons.get('cc');
     cc?.setAttribute('aria-pressed', String(!off));
   };
@@ -481,7 +486,8 @@ export function buildOverlay(
     volume.style.setProperty('--p', `${volume.value}%`);
   });
   addSpacer();
-  addButton({ id: 'cc', label: 'Show or hide subtitles', icon: 'captions' }, toggleSubs).setAttribute('aria-pressed', 'true');
+  addButton({ id: 'cc', label: 'Show or hide subtitles', icon: 'captions' }, toggleSubs).setAttribute('aria-pressed', String(!handlers.subsHidden));
+  if (handlers.subsHidden) stage.classList.add('subs-off');
   addButton({ id: 'translate', label: 'Translation', icon: 'languages', optional: true }, () => cycleTranslate()).setAttribute('aria-pressed', 'false');
   addButton({ id: 'history', label: 'Subtitle history (H)', icon: 'history', optional: true }, () => toggleHistory());
   addSep();
