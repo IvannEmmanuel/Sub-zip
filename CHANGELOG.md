@@ -2,6 +2,13 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## 0.4.0 - 2026-11-17
+- Reels and shorts: up / down buttons in the PiP window move to the next or previous video (Facebook, YouTube Shorts, Instagram Reels, TikTok). The window follows to the new video by itself.
+- Hiding the subtitles now stays hidden when the window follows to the next video.
+- Comments on YouTube: a comments button (or `K`) shows the live chat of a live stream, or the comments under the video, beside the video (wide window) or below it (narrow window) without covering the picture.
+- Smoother look: rounded video area and a floating, rounded control bar.
+- Subtitle size can go down to 10% (it was 60%).
+
 ## 0.3.1 - 2026-11-11
 - Subtitle delay: `[` and `]` show subtitles earlier or later (Shift for bigger steps, `\` resets), also in the tools panel. Works with subtitle files and tracks, and starts at 0 for each new PiP window.
 
