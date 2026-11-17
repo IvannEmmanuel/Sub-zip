@@ -1229,7 +1229,7 @@ export function buildOverlay(
   const renderComments = () => {
     const snap: CommentsSnapshot | null = handlers.comments?.() ?? null;
     const entries = snap?.entries ?? [];
-    const sig = `${snap?.kind}|${entries.length}|${entries[entries.length - 1]?.text ?? ''}`;
+    const sig = `${snap?.kind}|${entries.length}|${entries[0]?.text ?? ''}|${entries[entries.length - 1]?.text ?? ''}|${snap?.note ?? ''}`;
     if (sig === cmtSig) return;
     cmtSig = sig;
     const live = snap?.kind === 'live';
@@ -1242,7 +1242,7 @@ export function buildOverlay(
     });
     cmts.replaceChildren(
       textEl('h3', '', live ? 'Live chat' : 'Comments'),
-      ...(rows.length ? rows : [textEl('div', 'empty', 'No comments loaded yet. They appear here once the page has loaded them.')]),
+      ...(rows.length ? rows : [textEl('div', 'empty', snap?.note ?? 'No comments loaded yet. They appear here once the page has loaded them.')]),
     );
     if (live && stick) cmts.scrollTop = cmts.scrollHeight;
   };
