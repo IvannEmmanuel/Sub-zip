@@ -32,7 +32,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .stage { --bar-h: 84px; }
 .subs { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; align-items: center;
   gap: .14em; padding: 0 5%; pointer-events: none; text-align: center; line-height: 1.32; font-weight: 600;
-  font-family: var(--sub-font); font-size: clamp(17px, calc(var(--sub-scale) * 5.6cqw), 84px);
+  font-family: var(--sub-font); font-size: clamp(calc(var(--sub-scale) * 17px), calc(var(--sub-scale) * 5.6cqw), 84px);
   transition: transform .18s ease; }
 .stage.pos-bottom .subs { bottom: var(--sub-offset); }
 .stage.pos-top .subs { top: var(--sub-offset); }
@@ -599,7 +599,7 @@ export function buildOverlay(
   addStepper(
     'Size',
     [
-      { label: 'Smaller text', icon: 'smaller', run: () => handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }) },
+      { label: 'Smaller text', icon: 'smaller', run: () => handlers.update({ scale: Math.max(0.1, +(settings.scale - 0.1).toFixed(2)) }) },
       { label: 'Larger text', icon: 'larger', run: () => handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }) },
     ],
     sizeLabel,
@@ -775,7 +775,7 @@ export function buildOverlay(
       case '+':
       case '=': handlers.update({ scale: Math.min(2.5, +(settings.scale + 0.1).toFixed(2)) }); break;
       case '-':
-      case '_': handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }); break;
+      case '_': handlers.update({ scale: Math.max(0.1, +(settings.scale - 0.1).toFixed(2)) }); break;
       case 'Escape':
         if (dict.hidden && hist.hidden && cmts.hidden && more.hidden) return;
         closeDict();

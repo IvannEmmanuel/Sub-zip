@@ -481,7 +481,7 @@ export function App() {
               </div>
             </section>
             <div class="mt-2 flex flex-col">
-              <Slider label="Text size" min={0.6} max={2.5} step={0.1} value={settings.scale} format={(v) => `${Math.round(v * 100)}%`} onChange={(scale) => updateSettings({ scale })} />
+              <Slider label="Text size" min={0.1} max={2.5} step={0.1} value={settings.scale} format={(v) => `${Math.round(v * 100)}%`} onChange={(scale) => updateSettings({ scale })} />
               <Slider label="Distance" min={0} max={40} step={1} value={settings.offset} format={(v) => `${v}%`} onChange={(offset) => updateSettings({ offset })} />
               <Slider label="Background" min={0} max={1} step={0.05} value={settings.bgOpacity} format={(v) => `${Math.round(v * 100)}%`} onChange={(bgOpacity) => updateSettings({ bgOpacity })} />
               <Segmented<Settings['position']>
