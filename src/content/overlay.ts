@@ -71,9 +71,22 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .diag { position: absolute; left: 8px; top: 8px; z-index: 6; max-width: calc(100% - 16px); padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.78);
   color: ${T.ink}; font: 11px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap; pointer-events: none; }
 .diag[hidden] { display: none; }
-.hist, .cmts { position: absolute; inset: 8px 8px var(--bar-h) 8px; z-index: 4; overflow: auto; padding: 10px; border-radius: 14px;
+.hist { position: absolute; inset: 8px 8px var(--bar-h) 8px; z-index: 4; overflow: auto; padding: 10px; border-radius: 14px;
   background: rgba(3,7,18,.93); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+/* Comments sit BESIDE the video (wide window) or BELOW it (narrow window); the video shrinks to make room and stays visible. */
+.stage > * { --cmt-w: 0px; --cmt-h: 0px; }
+.stage.cmts-open > * { --cmt-h: 44cqh; }
+@container (min-width: 720px) and (min-aspect-ratio: 6/5) { .stage.cmts-open > * { --cmt-w: min(360px, 36cqw); --cmt-h: 0px; } }
+.cmts { position: absolute; left: 8px; right: 8px; bottom: 8px; height: calc(var(--cmt-h) - 16px); z-index: 4; overflow: auto; padding: 10px;
+  border-radius: 14px; background: rgba(10,14,22,.97); border: 1px solid rgba(255,255,255,.08); }
+@container (min-width: 720px) and (min-aspect-ratio: 6/5) { .cmts { left: auto; top: 8px; height: auto; width: calc(var(--cmt-w) - 16px); } }
 .cmts[hidden] { display: none; }
+.stage.cmts-open > video, .stage.cmts-open > canvas.surface, .stage.cmts-open > canvas.layer {
+  inset: 0 var(--cmt-w) var(--cmt-h) 0 !important; width: calc(100% - var(--cmt-w)) !important; height: calc(100% - var(--cmt-h)) !important; }
+.stage.cmts-open .subs { right: var(--cmt-w); }
+.stage.pos-bottom.cmts-open .subs { bottom: calc(var(--sub-offset) + var(--cmt-h)); }
+.stage.cmts-open .bar { right: calc(var(--cmt-w) + 8px); bottom: calc(var(--cmt-h) + 8px); }
+.stage.cmts-open .skip { right: calc(var(--cmt-w) + 12px); }
 .cmt { padding: 6px 8px; border-radius: 10px; font-size: 13px; line-height: 1.4; color: ${T.ink}; overflow-wrap: anywhere; }
 .cmt:hover { background: rgba(255,255,255,.07); }
 .cmt b { display: block; margin-bottom: 1px; font-size: 12px; font-weight: 600; color: ${T['primary-soft']}; }
@@ -1201,6 +1214,7 @@ export function buildOverlay(
   };
   let histTimer = 0;
   const toggleHistory = () => {
+    if (hist.hidden) closeComments();
     hist.hidden = !hist.hidden;
     win.clearInterval(histTimer);
     if (hist.hidden) return;
@@ -1234,6 +1248,7 @@ export function buildOverlay(
   };
   const closeComments = () => {
     cmts.hidden = true;
+    stage.classList.remove('cmts-open');
     win.clearInterval(cmtTimer);
     cmtBtn.removeAttribute('aria-pressed');
   };
@@ -1243,6 +1258,7 @@ export function buildOverlay(
     win.clearInterval(histTimer);
     closeDict();
     cmts.hidden = false;
+    stage.classList.add('cmts-open');
     cmtBtn.setAttribute('aria-pressed', 'true');
     cmtSig = '';
     handlers.loadComments?.();
