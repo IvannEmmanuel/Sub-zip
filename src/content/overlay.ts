@@ -9,6 +9,7 @@ import { defineWord, lookupProblem } from './lookup';
 import { loadBitmap, thumbAt, type ThumbCue } from './thumbnails';
 import { downloadBlob, downloadText, loadWords, safeName, saveWord, removeWord, toSrt, type SavedWord } from '../lib/study';
 import { watchResume } from './resume';
+import type { CommentsSnapshot } from './comments';
 
 const CSS = /* css */ `
 :root { color-scheme: dark; }
@@ -16,7 +17,7 @@ const CSS = /* css */ `
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
 
-.stage { position: relative; width: 100%; height: 100%; container-type: size; background: #000; outline: none; }
+.stage { position: relative; width: 100%; height: 100%; container-type: size; background: #000; outline: none; border-radius: 14px; overflow: hidden; }
 .stage > video, .stage > canvas.surface { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
   max-width: none !important; max-height: none !important; object-fit: contain !important; transform: none !important; }
 /* Captions the site draws on its own canvas arrive as a separate transparent layer, so the subtitle controls
@@ -70,8 +71,14 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 .diag { position: absolute; left: 8px; top: 8px; z-index: 6; max-width: calc(100% - 16px); padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.78);
   color: ${T.ink}; font: 11px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap; pointer-events: none; }
 .diag[hidden] { display: none; }
-.hist { position: absolute; inset: 0 0 var(--bar-h) 0; z-index: 4; overflow: auto; padding: 10px;
-  background: rgba(3,7,18,.93); }
+.hist, .cmts { position: absolute; inset: 8px 8px var(--bar-h) 8px; z-index: 4; overflow: auto; padding: 10px; border-radius: 14px;
+  background: rgba(3,7,18,.93); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.cmts[hidden] { display: none; }
+.cmt { padding: 6px 8px; border-radius: 10px; font-size: 13px; line-height: 1.4; color: ${T.ink}; overflow-wrap: anywhere; }
+.cmt:hover { background: rgba(255,255,255,.07); }
+.cmt b { display: block; margin-bottom: 1px; font-size: 12px; font-weight: 600; color: ${T['primary-soft']}; }
+.cmts h3 { margin: 0 0 6px; padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: ${T.mute}; }
+.cmts .empty { padding: 8px; color: ${T.mute}; font-size: 13px; }
 .hist h3 { margin: 0 0 6px; padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
   text-transform: uppercase; color: ${T.mute}; }
 .hist-row { display: flex; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
@@ -86,8 +93,10 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
   -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
 /* Control bar: seek row on top, buttons below. */
-.bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 2px;
-  padding: 28px 10px 8px; background: linear-gradient(to top, rgba(11,15,23,.95) 35%, rgba(11,15,23,0));
+.bar { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 8px 4px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08);
+  background: rgba(11,15,23,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: 0 6px 22px rgba(0,0,0,.45);
   opacity: 0; pointer-events: none; transition: opacity .18s ease; }
 .stage.controls .bar { opacity: 1; pointer-events: auto; }
 .seekrow { position: relative; display: flex; align-items: center; gap: 10px; padding: 0 4px; }
@@ -232,6 +241,10 @@ export interface OverlayHandlers {
   subsHidden?: boolean;
   /** Called when the person shows or hides the subtitles. */
   onSubsToggle?(hidden: boolean): void;
+  /** Comments / live chat the page shows (the button is only offered when this exists). */
+  comments?(): CommentsSnapshot;
+  /** Asks the page to load its comments (they load lazily). */
+  loadComments?(): void;
 }
 
 export interface Overlay {
@@ -301,6 +314,11 @@ export function buildOverlay(
   hist.className = 'hist';
   hist.hidden = true;
   hist.setAttribute('aria-label', 'Subtitle history');
+
+  const cmts = doc.createElement('div');
+  cmts.className = 'cmts';
+  cmts.hidden = true;
+  cmts.setAttribute('aria-label', 'Comments');
 
   const bar = doc.createElement('div');
   bar.className = 'bar';
@@ -490,6 +508,8 @@ export function buildOverlay(
   if (handlers.subsHidden) stage.classList.add('subs-off');
   addButton({ id: 'translate', label: 'Translation', icon: 'languages', optional: true }, () => cycleTranslate()).setAttribute('aria-pressed', 'false');
   addButton({ id: 'history', label: 'Subtitle history (H)', icon: 'history', optional: true }, () => toggleHistory());
+  const cmtBtn = addButton({ id: 'comments', label: 'Comments / live chat (K)', icon: 'comments' }, () => toggleComments());
+  cmtBtn.hidden = !handlers.comments;
   addSep();
   addButton({ id: 'more', label: 'Tools: study options and subtitle settings (G)', icon: 'sliders' }, () => toggleMore()).setAttribute('aria-expanded', 'false');
   addButton({ id: 'close', label: 'Close Picture-in-Picture', icon: 'close' }, handlers.close);
@@ -631,7 +651,7 @@ export function buildOverlay(
   toast.className = 'toast';
   toast.hidden = true;
   toast.setAttribute('role', 'status');
-  stage.append(subs, revealBtn, hist, dict, skipBtn, diag, toast, more, bar);
+  stage.append(subs, revealBtn, hist, cmts, dict, skipBtn, diag, toast, more, bar);
   stage.prepend(surfaceEl);
   if (layer) surfaceEl.after(layer);
   doc.body.append(stage);
@@ -718,6 +738,7 @@ export function buildOverlay(
       case 'j': seek(-10); break;
       case 'l': seek(10); break;
       case 'h': toggleHistory(); break;
+      case 'k': if (handlers.comments) toggleComments(); break;
       case 'r': replayLine(); break;
       case 'o': toggleLoop(); break;
       case 'w': handlers.update({ hoverLookup: !settings.hoverLookup }); break;
@@ -743,9 +764,10 @@ export function buildOverlay(
       case '-':
       case '_': handlers.update({ scale: Math.max(0.6, +(settings.scale - 0.1).toFixed(2)) }); break;
       case 'Escape':
-        if (dict.hidden && hist.hidden && more.hidden) return;
+        if (dict.hidden && hist.hidden && cmts.hidden && more.hidden) return;
         closeDict();
         hist.hidden = true;
+        closeComments();
         setMore(false);
         break;
       case 'ArrowLeft': seek(e.shiftKey ? -10 : -5); break;
@@ -1187,6 +1209,46 @@ export function buildOverlay(
     renderHistory();
     histTimer = win.setInterval(renderHistory, 700);
   };
+  // Comments and live chat, copied from the page. Text only; refreshed while the panel is open.
+  let cmtSig = '';
+  let cmtTimer = 0;
+  const renderComments = () => {
+    const snap: CommentsSnapshot | null = handlers.comments?.() ?? null;
+    const entries = snap?.entries ?? [];
+    const sig = `${snap?.kind}|${entries.length}|${entries[entries.length - 1]?.text ?? ''}`;
+    if (sig === cmtSig) return;
+    cmtSig = sig;
+    const live = snap?.kind === 'live';
+    const stick = !cmts.scrollTop || cmts.scrollHeight - cmts.scrollTop - cmts.clientHeight < 40;
+    const rows = entries.map((c) => {
+      const row = doc.createElement('div');
+      row.className = 'cmt';
+      row.append(textEl('b', '', c.author || 'Someone'), doc.createTextNode(c.text));
+      return row;
+    });
+    cmts.replaceChildren(
+      textEl('h3', '', live ? 'Live chat' : 'Comments'),
+      ...(rows.length ? rows : [textEl('div', 'empty', 'No comments loaded yet. They appear here once the page has loaded them.')]),
+    );
+    if (live && stick) cmts.scrollTop = cmts.scrollHeight;
+  };
+  const closeComments = () => {
+    cmts.hidden = true;
+    win.clearInterval(cmtTimer);
+    cmtBtn.removeAttribute('aria-pressed');
+  };
+  const toggleComments = () => {
+    if (!cmts.hidden) return closeComments();
+    hist.hidden = true;
+    win.clearInterval(histTimer);
+    closeDict();
+    cmts.hidden = false;
+    cmtBtn.setAttribute('aria-pressed', 'true');
+    cmtSig = '';
+    handlers.loadComments?.();
+    renderComments();
+    cmtTimer = win.setInterval(renderComments, 1000);
+  };
   const cycleTranslate = () => {
     const next = MODES[(MODES.indexOf(settings.translateMode) + 1) % MODES.length] ?? 'off';
     handlers.update({ translateMode: next });
@@ -1232,6 +1294,7 @@ export function buildOverlay(
       win.clearTimeout(hoverTimer);
       win.clearTimeout(hoverHideTimer);
       win.clearInterval(histTimer);
+      win.clearInterval(cmtTimer);
       win.clearInterval(dimTimer);
         stopResume();
       video.removeEventListener('play', syncPlayState);

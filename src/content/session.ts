@@ -4,6 +4,7 @@ import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type Overlay } from './overlay';
 import { watchNextEpisode } from './nextEpisode';
 import { isFeedPage, stepFeed } from './feedNav';
+import { isYouTube, loadComments, readComments } from './comments';
 import { watchThumbnails, type ThumbCue } from './thumbnails';
 import { watchSkip, type SkipTarget } from './skipIntro';
 import { SubtitlePipeline } from './subtitlePipeline';
@@ -182,6 +183,7 @@ export class PipSession implements PipController {
       next: () => this.nextWatch?.click(),
       step: (dir) => stepFeed(document, this.current.placeholder, dir),
       subsHidden: this.subsHidden,
+      ...(isYouTube(location.href) ? { comments: () => readComments(document), loadComments: () => loadComments(document) } : {}),
       onSubsToggle: (hidden) => {
         this.subsHidden = hidden;
       },
