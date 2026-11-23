@@ -2,6 +2,10 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## 0.4.1 - 2026-11-23
+- Comments and live chat now also work on sites other than YouTube: when the page shows a chat or comment list, a comments button appears in the PiP window (also for players inside iframes). Lists are found by their shape, so unusual markup still works.
+- YouTube live streams always show the live chat, unfold it if it is folded away, and say why when it is empty.
+
 ## 0.4.0 - 2026-11-17
 - Reels and shorts: up / down buttons in the PiP window move to the next or previous video (Facebook, YouTube Shorts, Instagram Reels, TikTok). The window follows to the new video by itself.
 - Hiding the subtitles now stays hidden when the window follows to the next video.
