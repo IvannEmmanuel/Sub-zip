@@ -258,6 +258,8 @@ export interface OverlayHandlers {
   comments?(): CommentsSnapshot;
   /** Asks the page to load its comments (they load lazily). */
   loadComments?(): void;
+  /** The button is offered from the start (known to have comments, like YouTube). */
+  commentsReady?: boolean;
 }
 
 export interface Overlay {
@@ -269,6 +271,8 @@ export interface Overlay {
   setNext(available: boolean): void;
   /** Shows or hides the up / down buttons used on reels and shorts. */
   setFeed(on: boolean): void;
+  /** Shows or hides the comments button (it appears once the page has comments to read). */
+  setComments(available: boolean): void;
   /** The site's seek-bar preview pictures (null = none). */
   setThumbs(cues: ThumbCue[] | null): void;
   /** Text for the diagnostics box (press D in the window to show it). */
@@ -494,6 +498,10 @@ export function buildOverlay(
   const nextVidBtn = addButton({ id: 'feed-next', label: 'Next video', icon: 'down' }, () => handlers.step(1));
   prevBtn.hidden = true;
   nextVidBtn.hidden = true;
+  const setComments = (available: boolean) => {
+    cmtBtn.hidden = !available;
+    if (!available && !cmts.hidden) closeComments();
+  };
   const setFeed = (on: boolean) => {
     prevBtn.hidden = !on;
     nextVidBtn.hidden = !on;
@@ -522,7 +530,7 @@ export function buildOverlay(
   addButton({ id: 'translate', label: 'Translation', icon: 'languages', optional: true }, () => cycleTranslate()).setAttribute('aria-pressed', 'false');
   addButton({ id: 'history', label: 'Subtitle history (H)', icon: 'history', optional: true }, () => toggleHistory());
   const cmtBtn = addButton({ id: 'comments', label: 'Comments / live chat (K)', icon: 'comments' }, () => toggleComments());
-  cmtBtn.hidden = !handlers.comments;
+  cmtBtn.hidden = !handlers.comments || !handlers.commentsReady;
   addSep();
   addButton({ id: 'more', label: 'Tools: study options and subtitle settings (G)', icon: 'sliders' }, () => toggleMore()).setAttribute('aria-expanded', 'false');
   addButton({ id: 'close', label: 'Close Picture-in-Picture', icon: 'close' }, handlers.close);
@@ -1295,6 +1303,7 @@ export function buildOverlay(
     setSkip,
     setNext,
     setFeed,
+    setComments,
     setThumbs: (cues) => {
       thumbs = cues && cues.length ? cues : null;
       if (!pv.hidden) drawThumb();

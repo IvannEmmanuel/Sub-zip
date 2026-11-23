@@ -52,8 +52,44 @@ function pageComments(doc: Document): CommentEntry[] {
   return out;
 }
 
+// ---- any other site: find a list of comment-like items by their class names -------------------
+
+const COMMENT_HINT = /comment|chat-?message|disqus|reply/i;
+const NOT_ITEM = /form|input|editor|textarea|compose|btn|button|count|header|title|toolbar|avatar|login|empty|loading|placeholder|wrapper-?all|container-?all/i;
+const AUTHOR_HINT = /author|user-?name|nick|display-?name|poster|commenter|name/i;
+const BODY_HINT = /(?:^|[-_ ])(?:text|content|body|message|msg)(?:$|[-_ ])/i;
+
+const cls = (el: Element) => `${typeof el.className === 'string' ? el.className : ''} ${el.id}`;
+
+function genericComments(doc: Document): CommentEntry[] {
+  // List items: elements with a comment-ish class that have same-tag, same-class siblings (a repeated row).
+  const items: Element[] = [];
+  for (const el of doc.querySelectorAll('[class*="comment" i], [id*="comment" i], [class*="disqus" i]')) {
+    const c = cls(el);
+    if (!COMMENT_HINT.test(c) || NOT_ITEM.test(c) || el.closest('form, textarea')) continue;
+    const parent = el.parentElement;
+    if (!parent) continue;
+    const same = [...parent.children].filter((n) => n.tagName === el.tagName && n.className === el.className);
+    if (same.length < 2) continue;
+    if (items.some((i) => i.contains(el))) continue; // replies live inside their thread: keep the outer one
+    items.push(el);
+    if (items.length >= MAX) break;
+  }
+  const out: CommentEntry[] = [];
+  for (const el of items) {
+    const authorEl = [...el.querySelectorAll('*')].find((n) => AUTHOR_HINT.test(cls(n)) && clean(n.textContent).length > 0 && clean(n.textContent).length < 60);
+    const bodyEl = [...el.querySelectorAll('*')].find((n) => BODY_HINT.test(cls(n)) && !n.contains(authorEl ?? el) && clean(n.textContent).length > 0);
+    const author = clean(authorEl?.textContent);
+    let text = clean(bodyEl?.textContent);
+    if (!text) text = clean(el.textContent).replace(author, '').trim();
+    if (text && text.length <= 2000) out.push({ author, text });
+  }
+  return out;
+}
+
 /** What is readable on the page right now: live chat when there is one, otherwise the comments under the video. */
 export function readComments(doc: Document): CommentsSnapshot {
+  if (!isYouTube(doc.location.href)) return { kind: 'comments', entries: genericComments(doc) };
   const chat = chatDocument(doc);
   if (chat && chat.querySelector('yt-live-chat-item-list-renderer')) {
     const entries = liveChat(chat);

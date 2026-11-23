@@ -6,6 +6,7 @@
 //                      viewer's commands (play, seek, volume, skip…) back to the iframe.
 // They talk with window.postMessage (cross-origin safe; ImageBitmaps are transferred, not copied).
 
+import { isYouTube, loadComments, readComments } from './comments';
 import type { HistoryEntry, Line, SourceId } from '../lib/messaging';
 import { saveSettings, type Settings } from '../lib/settings';
 import { buildOverlay, type MediaLike, type Overlay } from './overlay';
@@ -251,6 +252,8 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
           },
           skip: () => media.send({ c: 'skip' }),
           next: () => (topNext.found ? topNext.watch?.click() : media.send({ c: 'next' })),
+          comments: () => readComments(document),
+          loadComments: () => loadComments(document),
           step: () => {}, // reels and shorts play in the page itself, not in an embedded player
         },
         canvas,
@@ -268,8 +271,18 @@ export function initRelayHost(getSettings: () => Settings): { applySettings(sett
       };
       const readAround = createOverlayReader(frameRect, () => media.currentTime);
       let lastAround = '';
+      let lastComments = 0;
+      let hasComments: boolean | null = null;
       s.hostTimer = window.setInterval(() => {
         if (s.closed) return;
+        if (Date.now() - lastComments > 2000) {
+          lastComments = Date.now();
+          const has = isYouTube(location.href) || readComments(document).entries.length > 0;
+          if (has !== hasComments) {
+            hasComments = has;
+            s.overlay.setComments(has);
+          }
+        }
         const text = readAround();
         if (text === lastAround) return;
         lastAround = text;

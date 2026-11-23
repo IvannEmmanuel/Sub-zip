@@ -183,7 +183,9 @@ export class PipSession implements PipController {
       next: () => this.nextWatch?.click(),
       step: (dir) => stepFeed(document, this.current.placeholder, dir),
       subsHidden: this.subsHidden,
-      ...(isYouTube(location.href) ? { comments: () => readComments(document), loadComments: () => loadComments(document) } : {}),
+      comments: () => readComments(document),
+      loadComments: () => loadComments(document),
+      commentsReady: isYouTube(location.href),
       onSubsToggle: (hidden) => {
         this.subsHidden = hidden;
       },
@@ -223,8 +225,18 @@ export class PipSession implements PipController {
     }, 250);
   }
 
+  private commentsShown: boolean | null = null;
+  /** The comments button appears once the page has comments to read (always on YouTube). */
+  private checkComments(): void {
+    const has = isYouTube(location.href) || readComments(document).entries.length > 0;
+    if (has === this.commentsShown) return;
+    this.commentsShown = has;
+    this.overlay.setComments(has);
+  }
+
   private poll(): void {
     if (this.closed) return;
+    this.checkComments();
     // Tracks / caption layers often appear after playback starts: keep looking while nothing is attached.
     if (this.auto && this.active === 'off' && this.available().length > 1) this.setSource('auto');
     const stranded = !this.current.placeholder.isConnected; // the page dropped the video's container
@@ -250,6 +262,7 @@ export class PipSession implements PipController {
     this.video = next;
     this.pipeline.setVideo(next);
     this.overlay = this.buildOverlayFor(next);
+    this.commentsShown = null;
     this.overlay.setThumbs(this.thumbs);
     this.watchSkipIn(this.current.playerRoot);
     this.nextWatch?.stop();
