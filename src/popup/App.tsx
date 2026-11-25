@@ -315,6 +315,12 @@ export function App() {
                 checked={settings.autoDim}
                 onChange={(autoDim) => updateSettings({ autoDim })}
               />
+              <Switch
+                label="Auto scroll reels"
+                hint="On Facebook, YouTube Shorts, Instagram and TikTok, go to the next video when one ends (N in the PiP window)"
+                checked={settings.autoScroll}
+                onChange={(autoScroll) => updateSettings({ autoScroll })}
+              />
               <p class="mt-1 text-[11px] leading-relaxed text-mute">
                 In the PiP window: R replays the line, O loops it, G opens more tools.
               </p>

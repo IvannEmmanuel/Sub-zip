@@ -2,6 +2,11 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. A release is created automatically when a tag like `v0.2.0` is pushed.
 
+## 0.4.2 - 2026-11-25
+- Auto scroll for reels: on Facebook, YouTube Shorts, Instagram and TikTok the window moves to the next video when one ends. On by default; turn it off in the popup or with `N` in the PiP window.
+- The video now fills the whole PiP window at any size, with no black bars at the edges.
+- Instagram reels keep playing when you switch to another tab or website.
+
 ## 0.4.1 - 2026-11-23
 - Comments and live chat now also work on sites other than YouTube: when the page shows a chat or comment list, a comments button appears in the PiP window (also for players inside iframes). Lists are found by their shape, so unusual markup still works.
 - YouTube live streams always show the live chat, unfold it if it is folded away, and say why when it is empty.

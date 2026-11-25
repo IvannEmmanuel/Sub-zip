@@ -19,7 +19,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
 
 .stage { position: relative; width: 100%; height: 100%; container-type: size; background: #000; outline: none; border-radius: 14px; overflow: hidden; }
 .stage > video, .stage > canvas.surface { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
-  max-width: none !important; max-height: none !important; object-fit: contain !important; transform: none !important; }
+  max-width: none !important; max-height: none !important; object-fit: cover !important; transform: none !important; }
 /* Captions the site draws on its own canvas arrive as a separate transparent layer, so the subtitle controls
    (size, up/down, hide) work on them too. The layer is anchored near the bottom, where such captions sit. */
 .stage > canvas.layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;
@@ -598,6 +598,8 @@ export function buildOverlay(
     flash(`Subtitle delay ${fmtDelay(next)}${next > 0 ? ' (later)' : next < 0 ? ' (earlier)' : ''}`);
   };
 
+  group('Reels');
+  addSwitch('autoscroll', 'Auto scroll', 'Go to the next video when this one ends', 'N', 'down', () => handlers.update({ autoScroll: !settings.autoScroll }));
   group('Study');
   addSwitch('loop', 'Loop this line', 'Repeat the current line until you stop it', 'O', 'loop', () => toggleLoop());
   addSwitch('hover', 'Hover to look up', 'Rest the pointer on a word to see its meaning', 'W', 'search', () => handlers.update({ hoverLookup: !settings.hoverLookup }));
@@ -762,6 +764,7 @@ export function buildOverlay(
       case 'k': if (handlers.comments) toggleComments(); break;
       case 'r': replayLine(); break;
       case 'o': toggleLoop(); break;
+      case 'n': handlers.update({ autoScroll: !settings.autoScroll }); break;
       case 'w': handlers.update({ hoverLookup: !settings.hoverLookup }); break;
       case 'e': handlers.update({ studyMode: !settings.studyMode }); break;
       case 'q': handlers.update({ autoDim: !settings.autoDim }); break;
@@ -818,6 +821,7 @@ export function buildOverlay(
     chips.get('hover')?.setAttribute('aria-checked', String(next.hoverLookup));
     chips.get('study')?.setAttribute('aria-checked', String(next.studyMode));
     chips.get('dim')?.setAttribute('aria-checked', String(next.autoDim));
+    chips.get('autoscroll')?.setAttribute('aria-checked', String(next.autoScroll));
     if (!next.hoverLookup) cancelHover();
     if (!next.studyMode) revealed = false;
     syncReveal();

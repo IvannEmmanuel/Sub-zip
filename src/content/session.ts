@@ -140,6 +140,11 @@ export class PipSession implements PipController {
 
     // Follow the viewer: when another video starts playing on screen (next reel, next item in a feed), switch to it.
     document.addEventListener('playing', this.onAnyPlaying, true);
+    document.addEventListener('timeupdate', this.onTime, true);
+    document.addEventListener('pause', this.onPagePause, true);
+    win.addEventListener('pointerdown', this.markUser, true);
+    win.addEventListener('keydown', this.markUser, true);
+    document.addEventListener('ended', this.onTime, true);
     // Safety net for players that start without a 'playing' event we can see, and for a dropped container.
     this.pollTimer = window.setInterval(() => this.poll(), 800);
 
@@ -215,6 +220,36 @@ export class PipSession implements PipController {
   private readonly onAnyPlaying = (e: Event) => {
     const target = e.target;
     if (target instanceof HTMLVideoElement && target !== this.video) this.scheduleSwitch(target);
+  };
+
+  // Sites like Instagram pause their videos when the tab is left, even though the video is playing in the PiP window.
+  // A pause that happens while the page is hidden and that the person did not ask for in the PiP window is undone.
+  private lastUser = 0;
+  private readonly markUser = () => {
+    this.lastUser = Date.now();
+  };
+  private readonly onPagePause = (e: Event) => {
+    if (e.target !== this.video || this.closed || this.video.ended) return;
+    if (document.visibilityState !== 'hidden' || Date.now() - this.lastUser < 1500) return;
+    const v = this.video;
+    for (const ms of [0, 150, 500]) window.setTimeout(() => {
+      if (!this.closed && v === this.video && v.paused && !v.ended && Date.now() - this.lastUser > 1500) void v.play().catch(() => {});
+    }, ms);
+  };
+
+  // Auto scroll: when the video is about to end (reels loop, so we cannot wait for 'ended'), go to the next one.
+  private armed = true;
+  private lastStep = 0;
+  private readonly onTime = (e: Event) => {
+    const v = this.video;
+    if (e.target !== v || this.closed || !this.settings.autoScroll || !isFeedPage(location.href)) return;
+    if (v.currentTime < 1) this.armed = true;
+    const left = v.duration - v.currentTime;
+    const done = e.type === 'ended' || (Number.isFinite(left) && v.duration > 2 && left < 0.3);
+    if (!done || !this.armed || Date.now() - this.lastStep < 2500) return;
+    this.armed = false;
+    this.lastStep = Date.now();
+    stepFeed(document, this.current.placeholder, 1);
   };
 
   private scheduleSwitch(candidate: HTMLVideoElement): void {
@@ -344,6 +379,9 @@ export class PipSession implements PipController {
     window.clearInterval(this.pollTimer);
     window.clearTimeout(this.followTimer);
     document.removeEventListener('playing', this.onAnyPlaying, true);
+    document.removeEventListener('timeupdate', this.onTime, true);
+    document.removeEventListener('pause', this.onPagePause, true);
+    document.removeEventListener('ended', this.onTime, true);
     this.unwatchSkip();
     this.nextWatch?.stop();
     this.stopThumbs();

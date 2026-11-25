@@ -27,6 +27,8 @@ export interface Settings {
   autoDim: boolean;
   /** Hide each subtitle line until you ask for it (listen first, check after). */
   studyMode: boolean;
+  /** On feeds of short videos (Reels, Shorts, TikTok), move to the next video when the current one finishes. */
+  autoScroll: boolean;
   /** Seconds the subtitle file/track is shifted: positive = later, negative = earlier. Reset to 0 for each new PiP window. */
   subDelay: number;
 }
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hoverLookup: true,
   autoDim: false,
   studyMode: false,
+  autoScroll: true,
   subDelay: 0,
 };
 
